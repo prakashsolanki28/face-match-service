@@ -108,12 +108,71 @@ Measured on an Apple M-series laptop:
 One instance comfortably serves several kiosks. Requests are handled in a thread pool, and the detector and
 recognizer are each serialised, so CPU time per frame is what limits throughput. The compose file caps memory at 512 MB.
 
-## Scaling and storage
+## Capacity
 
-- **Single instance** (the default): SQLite + in-memory index. Fine for thousands of people.
-- **Several instances:** each one holds its own in-memory index, so they need a shared database and an index
-  refresh on enrollment changes. That isn't built in yet; Postgres + pgvector is the planned path.
-  Contributions are welcome.
+Measured with `face-match loadtest` on an Apple M4 laptop (one server, 33 people enrolled, liveness on, a 640×480
+frame with one face):
+
+| Parallel clients | Requests/s | Median latency | p95 | ≈ kiosks |
+|---|---|---|---|---|
+| 1 | 40 | 24 ms | 34 ms | 26 |
+| 4 | 41 | 94 ms | 131 ms | 27 |
+| 16 | 43 | 371 ms | 432 ms | 28 |
+| 8 (`/attendance`) | 54 | 143 ms | 168 ms | 36 |
+
+Throughput is bound by face detection and recognition, which each process one image at a time per server, so more
+clients add latency rather than throughput. A kiosk sends about 1.5 frames per second, so **one server serves about
+25–35 kiosks**; a school with 400 students arriving in 20 minutes needs 2–4 kiosks. Measure your own hardware:
+
+```bash
+face-match loadtest --image a-real-camera-frame.jpg --api-key "$KEY" --concurrency 1,4,8 --duration 15
+```
+
+Memory: about 110 MB idle and about 250 MB under sustained load.
+
+## Several servers (high availability)
+
+Point every server at one PostgreSQL database and put a load balancer in front:
+
+```bash
+pip install "face-match-service[postgres]"     # already included in the Docker image
+DATABASE_URL=postgresql://facematch:secret@db.internal:5432/facematch face-match serve --host 0.0.0.0
+```
+
+What is shared, and how:
+
+| Concern | How it works with several servers |
+|---|---|
+| People, embeddings, attendance, keys, users, sessions, audit | In PostgreSQL. Any server can handle any request; no sticky sessions needed |
+| New enrollments | Each server polls a change feed every `GALLERY_SYNC_SECONDS` (default 2 s) and updates its in-memory index |
+| Check-ins | A per-person database lock means two servers can't record the same check-in twice |
+| Webhooks | Deliveries are claimed with `FOR UPDATE SKIP LOCKED`, so exactly one server sends each attempt |
+| Key revocation | Takes effect within 30 s everywhere (key lookups are cached briefly) |
+| Rate limits | Counted per server: the effective limit is `RATE_LIMIT_PER_MINUTE` × number of servers |
+| Backups | Use `pg_dump` or your provider's managed backups (the built-in backups are for SQLite) |
+
+Example with Docker Compose (two FaceMatch servers, PostgreSQL, and Caddy as an HTTPS load balancer):
+
+```yaml
+services:
+  db:
+    image: postgres:16
+    environment: { POSTGRES_USER: facematch, POSTGRES_PASSWORD: change-me, POSTGRES_DB: facematch }
+    volumes: [pgdata:/var/lib/postgresql/data]
+  app:
+    image: ghcr.io/prakashsolanki28/face-match-service:latest
+    environment:
+      DATABASE_URL: postgresql://facematch:change-me@db:5432/facematch
+      API_KEY: ${API_KEY:?set API_KEY}
+      FORWARDED_ALLOW_IPS: "*"   # trust the proxy's X-Forwarded-For (only reachable through Caddy)
+    deploy: { replicas: 2 }
+    depends_on: [db]
+  proxy:
+    image: caddy:2
+    command: caddy reverse-proxy --from face.example.com --to app:8000
+    ports: ["80:80", "443:443"]
+volumes: { pgdata: {} }
+```
 
 ## Backups and upgrades
 

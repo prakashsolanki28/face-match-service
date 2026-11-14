@@ -24,7 +24,7 @@ RUN apt-get update \
 WORKDIR /opt/face-match
 COPY pyproject.toml README.md LICENSE NOTICE ./
 COPY face_match ./face_match
-RUN pip install . \
+RUN pip install ".[postgres]" \
  # Bake the models (SHA-256 verified) into the image so containers start offline.
  && face-match download-models \
  && useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin facematch \

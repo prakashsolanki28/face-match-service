@@ -8,7 +8,8 @@ Thanks for helping! Bug reports, docs fixes, and pull requests are all welcome.
 git clone https://github.com/prakashsolanki28/face-match-service.git
 cd face-match-service
 make dev            # creates .venv and installs FaceMatch with test/lint tools
-make test           # runs the test suite (downloads models and two sample images once)
+make test           # runs the test suite (downloads models and sample images once)
+# against PostgreSQL too:  FACE_MATCH_TEST_DATABASE_URL=postgresql://user@localhost/facematch_test make test
 make run            # http://127.0.0.1:8000
 ```
 
@@ -44,8 +45,12 @@ face_match/
   webhook.py      signed outbound webhooks
   schemas.py      request/response models (the API contract)
   config.py       settings from environment / .env
-  static/         demo web UI (single file, no build step)
-  tools/          bulk_import.py (stdlib only), evaluate.py
+  security.py     keys, roles, passwords, sessions, rate limiting, overload gate
+  liveness.py     MiniFASNet anti-spoofing
+  observability.py  metrics, request ids, JSON logs
+  maintenance.py  backups, retention, periodic workers
+  static/         web UI (index.html) and kiosk page (kiosk.html), no build step
+  tools/          bulk_import.py (stdlib only), evaluate.py, pilot_report.py, loadtest.py
 tests/            API, bulk-import and dataset accuracy tests
 docs/             user documentation
 ```

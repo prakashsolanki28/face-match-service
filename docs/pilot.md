@@ -8,7 +8,9 @@ Lab numbers don't replace a pilot. Your people, cameras, lighting and photos dec
 1. Deploy FaceMatch with `API_KEY`, `TIMEZONE` and liveness on (the default). See [deployment.md](deployment.md).
 2. Enroll the group with `face-match import` from your portal photos, then fix every row the import report flags.
 3. Add **one live photo per person** with the kiosk camera (Enroll tab → "Add these photos to …").
-4. Create one key per kiosk: `face-match keys create --name pilot-kiosk --scopes attendance`.
+4. Create the first admin (`face-match users create --username admin`), then in **Admin → Device keys** create a
+   key per kiosk with only `attendance`, and open `/kiosk.html` on each tablet with its setup link
+   (see [admin-and-kiosk.md](admin-and-kiosk.md)).
 5. Keep taking attendance the usual way (paper or portal). That register is your ground truth.
 
 ## 2. Measure every day

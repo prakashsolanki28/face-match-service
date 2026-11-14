@@ -106,7 +106,8 @@ class WebhookDispatcher:
     def deliver_due(self, now: Optional[float] = None) -> int:
         """Attempt every due event once. Returns how many were delivered."""
         delivered = 0
-        for row in self.db.due_webhooks(time.time() if now is None else now):
+        # Claiming (not just reading) makes sure two servers never send the same delivery at once.
+        for row in self.db.claim_due_webhooks(time.time() if now is None else now):
             if self._stop.is_set():
                 break
             body = build_body(row["event_id"], row["event"], json.loads(row["payload"]))

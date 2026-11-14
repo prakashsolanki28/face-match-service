@@ -12,6 +12,7 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
+from conftest import sqlite_only
 
 from face_match.maintenance import MaintenanceWorker, apply_retention, list_backups, make_backup
 from face_match.observability import JsonFormatter
@@ -253,6 +254,7 @@ def test_database_and_backups_are_owner_only(tmp_path, lena):
     db.close()
 
 
+@sqlite_only
 def test_maintenance_backs_up_and_applies_retention(make_client, lena):
     with make_client(attendance_retention_days=1, backup_interval_hours=1) as client:
         service = client.app.state.service

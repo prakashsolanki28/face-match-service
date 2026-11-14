@@ -172,6 +172,56 @@ class WebhookDelivery(BaseModel):
     next_attempt_at: float
 
 
+class User(BaseModel):
+    id: str
+    username: str
+    role: Literal["admin", "operator", "viewer"]
+    created_at: str
+    last_login_at: Optional[str]
+    disabled_at: Optional[str]
+
+
+class UserCreate(BaseModel):
+    username: str = Field(examples=["asha.verma"])
+    password: str = Field(min_length=1)
+    role: Literal["admin", "operator", "viewer"] = "operator"
+
+
+class UserUpdate(BaseModel):
+    role: Optional[Literal["admin", "operator", "viewer"]] = None
+    password: Optional[str] = None
+    disabled: Optional[bool] = None
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class WhoAmI(BaseModel):
+    kind: Literal["admin_key", "key", "user", "open"]
+    name: str
+    role: Optional[str] = None
+    scopes: List[str]
+    csrf_token: Optional[str] = Field(
+        default=None, description="Browser sessions: send it as X-CSRF-Token on POST/PUT/PATCH/DELETE."
+    )
+    expires_at: Optional[float] = None
+
+
+class AuditEntry(BaseModel):
+    id: int
+    ts: float
+    created_at: str
+    actor: str
+    action: str
+    target_type: Optional[str]
+    target_id: Optional[str]
+    details: Optional[dict]
+    ip: Optional[str]
+    request_id: Optional[str]
+
+
 class Health(BaseModel):
     status: Literal["ok"]
     version: str
@@ -181,6 +231,7 @@ class Health(BaseModel):
     match_threshold: float
     min_face_size: int
     liveness: bool
+    login: bool = Field(description="True when user accounts exist (the UI shows a login form).")
     auth_required: bool
 
 

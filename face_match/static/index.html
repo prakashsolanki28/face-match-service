@@ -108,7 +108,22 @@
   .stack { display: flex; flex-direction: column; gap: 20px; }
   .toolbar { display: flex; gap: 10px; align-items: end; margin-bottom: 14px; flex-wrap: wrap; }
   .toolbar .field { margin: 0; }
-  #auth { display: none; align-items: center; gap: 8px; }
+  #who { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+  #who[hidden] { display: none; }
+  .link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; font-weight: 600; }
+  .login { max-width: 380px; margin: 48px auto; }
+  .login .alt { margin-top: 16px; font-size: 13px; color: var(--muted); }
+  select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); }
+  select.small { padding: 4px 6px; font-size: 13px; }
+  .scopes { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding-bottom: 10px; }
+  .token { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; word-break: break-all;
+    background: var(--surface-2); padding: 10px 12px; border-radius: 8px; margin-top: 8px; user-select: all; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    background: var(--surface-2); color: var(--muted); }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); } .badge.bad { background: var(--bad-bg); color: var(--bad); }
+  td.actions { text-align: right; white-space: nowrap; }
+  td.actions .btn { margin-left: 6px; }
   #auth input { width: 180px; padding: 6px 10px; font-size: 13px; }
 </style>
 </head>
@@ -126,14 +141,40 @@
     <button role="tab" data-tab="kiosk" aria-selected="true">Identify</button>
     <button role="tab" data-tab="enroll" aria-selected="false">Enroll</button>
     <button role="tab" data-tab="records" aria-selected="false">Records</button>
+    <button role="tab" data-tab="admin" aria-selected="false" hidden>Admin</button>
   </nav>
   <div class="spacer"></div>
-  <div id="auth"><input id="apiKey" type="password" placeholder="API key" aria-label="API key"></div>
+  <div id="who" hidden><span id="whoText"></span><button type="button" class="link-btn" id="signOut">Sign out</button></div>
   <span class="pill"><span class="dot" id="statusDot"></span><span id="statusText">Connecting…</span></span>
   <a class="link" href="/docs" target="_blank" rel="noopener">API docs ↗</a>
 </header>
 
 <main>
+  <!-- Login -->
+  <section id="tab-login" hidden>
+    <div class="card login">
+      <h2>Sign in</h2>
+      <p class="sub">FaceMatch requires an account.</p>
+      <form id="loginForm" autocomplete="on">
+        <div class="field"><label for="username">Username</label>
+          <input type="text" id="username" autocomplete="username" required></div>
+        <div class="field"><label for="password">Password</label>
+          <input type="password" id="password" autocomplete="current-password" required></div>
+        <button class="btn primary" type="submit">Sign in</button>
+      </form>
+      <div id="loginError"></div>
+      <div class="alt">
+        <button type="button" class="link-btn" id="useKey">Use an API key instead</button>
+        <div id="keyBox" hidden style="margin-top:10px">
+          <input id="apiKey" type="password" placeholder="API key (fm_… or the admin key)" aria-label="API key">
+          <div class="row"><button type="button" class="btn small" id="saveKey">Continue</button></div>
+        </div>
+        <p id="noAccounts" hidden>No accounts exist yet. Create the first admin on the server with
+          <code>face-match users create --username admin</code>.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- Kiosk -->
   <section id="tab-kiosk">
     <div class="grid">
@@ -230,6 +271,64 @@
       </div>
     </div>
   </section>
+
+  <!-- Admin -->
+  <section id="tab-admin" hidden>
+    <div class="stack">
+      <div class="card">
+        <h2>Users</h2>
+        <p class="sub">People who sign in here. Operators enroll and view records; viewers only view records.</p>
+        <form id="userForm" class="toolbar" autocomplete="off">
+          <div class="field"><label for="newUser">Username</label><input type="text" id="newUser" required></div>
+          <div class="field"><label for="newPass">Password (10+ characters)</label>
+            <input type="password" id="newPass" autocomplete="new-password" required></div>
+          <div class="field"><label for="newRole">Role</label>
+            <select id="newRole"><option>operator</option><option>viewer</option><option>admin</option></select></div>
+          <button class="btn primary" type="submit">Add user</button>
+        </form>
+        <div id="userResult"></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Username</th><th>Role</th><th>Last sign-in</th><th>Status</th><th></th></tr></thead>
+          <tbody id="usersBody"></tbody>
+        </table></div>
+      </div>
+      <div class="card">
+        <h2>Device keys</h2>
+        <p class="sub">One key per kiosk or integration. Kiosks need only <strong>attendance</strong>. The token is shown once.</p>
+        <form id="keyForm" class="toolbar" autocomplete="off">
+          <div class="field"><label for="keyName">Name</label><input type="text" id="keyName" placeholder="gate-1 kiosk" required></div>
+          <div class="scopes" id="keyScopes"></div>
+          <button class="btn primary" type="submit">Create key</button>
+        </form>
+        <div id="newKey"></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Name</th><th>Key</th><th>Permissions</th><th>Last used</th><th>Status</th><th></th></tr></thead>
+          <tbody id="keysBody"></tbody>
+        </table></div>
+      </div>
+      <div class="card">
+        <h2>Audit log</h2>
+        <p class="sub">Who enrolled, deleted, signed in or changed keys and users.</p>
+        <div class="toolbar">
+          <div class="field" style="flex:1;max-width:320px"><label for="auditFilter">Action</label>
+            <input type="search" id="auditFilter" placeholder="e.g. person.* or auth.login_failed"></div>
+          <button class="btn" id="auditRefresh">Refresh</button>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Time</th><th>Who</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
+          <tbody id="auditBody"></tbody>
+        </table></div>
+      </div>
+      <div class="card">
+        <h2>Webhook deliveries</h2>
+        <p class="sub">Events your portal hasn't confirmed yet. Failed deliveries can be retried.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Event</th><th>Status</th><th>Attempts</th><th>Last error</th><th></th></tr></thead>
+          <tbody id="hooksBody"></tbody>
+        </table></div>
+      </div>
+    </div>
+  </section>
 </main>
 
 <script>
@@ -244,17 +343,21 @@ const RECORD_STORE = "faceMatch.recordAttendance";
 try { $("apiKey").value = localStorage.getItem(KEY_STORE) || ""; } catch {}
 try { $("recordAttendance").checked = localStorage.getItem(RECORD_STORE) === "1"; } catch {}
 $("recordAttendance").addEventListener("change", (e) => { try { localStorage.setItem(RECORD_STORE, e.target.checked ? "1" : "0"); } catch {} });
-$("apiKey").addEventListener("change", (e) => { try { localStorage.setItem(KEY_STORE, e.target.value.trim()); } catch {} loadHealth(); });
 
 async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   const key = $("apiKey").value.trim();
+  const method = (options.method || "GET").toUpperCase();
   if (key) headers["X-API-Key"] = key;
-  const res = await fetch(path, { ...options, headers });
+  else if (state.csrf && method !== "GET") headers["X-CSRF-Token"] = state.csrf;  // session cookie + CSRF token
+  if (options.json !== undefined) { headers["Content-Type"] = "application/json"; options = { ...options, body: JSON.stringify(options.json) }; }
+  const res = await fetch(path, { ...options, headers, credentials: "same-origin" });
   const body = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) {
     const err = new Error(body?.error?.message || `${res.status} ${res.statusText}`);
-    err.status = res.status; err.body = body; throw err;
+    err.status = res.status; err.body = body;
+    if (res.status === 401 && !path.startsWith("/api/v1/auth/") && state.authRequired) showLogin();
+    throw err;
   }
   return body;
 }
@@ -265,14 +368,78 @@ async function loadHealth() {
     state.threshold = h.match_threshold;
     state.minFace = h.min_face_size;
     state.liveness = !!h.liveness;
+    state.authRequired = h.auth_required;
+    state.loginEnabled = h.login;
     $("statusDot").className = "dot ok";
     $("statusText").textContent = `Online · ${h.persons} enrolled`;
-    $("auth").style.display = h.auth_required ? "flex" : "none";
   } catch {
     $("statusDot").className = "dot bad";
     $("statusText").textContent = "Service offline";
   }
 }
+
+// ---- session & roles ---------------------------------------------------------------
+const TAB_SCOPES = { kiosk: ["recognize", "attendance"], enroll: ["enroll"], records: ["read"], admin: ["admin"] };
+const allowed = (tab) => !state.me || state.me.scopes.includes("admin") || TAB_SCOPES[tab].some((s) => state.me.scopes.includes(s));
+
+async function ensureSession() {
+  if (!state.authRequired) { state.me = null; applyRole(); return true; }
+  try {
+    state.me = await api("/api/v1/auth/me");
+    state.csrf = state.me.csrf_token || null;
+    applyRole();
+    return true;
+  } catch (e) {
+    if (e.status === 401) { showLogin(); return false; }
+    throw e;
+  }
+}
+
+function applyRole() {
+  document.querySelectorAll("nav [data-tab]").forEach((t) => { t.hidden = !allowed(t.dataset.tab); });
+  $("who").hidden = !state.me;
+  if (state.me) {
+    const who = state.me.kind === "user" ? `${state.me.name} (${state.me.role})` : state.me.kind === "key" ? `key: ${state.me.name}` : "admin key";
+    $("whoText").textContent = who;
+    $("signOut").textContent = state.me.kind === "user" ? "Sign out" : "Forget key";
+  }
+  document.querySelector("nav").hidden = false;
+  const current = location.hash.slice(1);
+  selectTab(TAB_SCOPES[current] && allowed(current) ? current : Object.keys(TAB_SCOPES).find(allowed) || "records");
+}
+
+function showLogin() {
+  stopKiosk(); stopCamera();
+  document.querySelector("nav").hidden = true;
+  $("who").hidden = true;
+  document.querySelectorAll("main > section").forEach((s) => s.hidden = s.id !== "tab-login");
+  $("noAccounts").hidden = state.loginEnabled !== false;
+}
+
+$("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("loginError").innerHTML = "";
+  try {
+    const me = await api("/api/v1/auth/login", { method: "POST", json: { username: $("username").value.trim(), password: $("password").value } });
+    $("password").value = "";
+    state.me = me; state.csrf = me.csrf_token;
+    applyRole(); loadHealth();
+  } catch (err) {
+    $("loginError").innerHTML = `<div class="notice bad">${esc(err.message)}</div>`;
+  }
+});
+$("useKey").addEventListener("click", () => { $("keyBox").hidden = !$("keyBox").hidden; });
+$("saveKey").addEventListener("click", async () => {
+  try { localStorage.setItem(KEY_STORE, $("apiKey").value.trim()); } catch {}
+  if (await ensureSession()) loadHealth();
+  else $("loginError").innerHTML = `<div class="notice bad">That API key wasn't accepted.</div>`;
+});
+$("signOut").addEventListener("click", async () => {
+  if (state.me?.kind === "user") { try { await api("/api/v1/auth/logout", { method: "POST" }); } catch {} }
+  $("apiKey").value = ""; try { localStorage.removeItem(KEY_STORE); } catch {}
+  state.me = null; state.csrf = null;
+  showLogin();
+});
 
 // ---- tabs ------------------------------------------------------------------
 function selectTab(name) {
@@ -280,6 +447,7 @@ function selectTab(name) {
   document.querySelectorAll("main > section").forEach((s) => s.hidden = s.id !== `tab-${name}`);
   stopKiosk(); stopCamera(); setEnrollCam(false);
   if (name === "records") loadRecords();
+  if (name === "admin") loadAdmin();
 }
 document.querySelectorAll("nav [data-tab]").forEach((tab) => tab.addEventListener("click", () => {
   history.replaceState(null, "", `#${tab.dataset.tab}`);
@@ -700,13 +868,123 @@ $("personsBody").addEventListener("click", async (e) => {
   loadRecords(); loadHealth();
 });
 
-loadHealth();
-function tabFromHash() {
-  const tab = location.hash.slice(1);
-  if (["kiosk", "enroll", "records"].includes(tab)) selectTab(tab);
+// ---- admin ---------------------------------------------------------------------------
+const SCOPE_LIST = ["attendance", "recognize", "read", "enroll", "metrics", "admin"];
+$("keyScopes").innerHTML = SCOPE_LIST.map((sc) =>
+  `<label class="check"><input type="checkbox" value="${sc}" ${sc === "attendance" ? "checked" : ""}> ${sc}</label>`).join("");
+const when = (iso) => iso ? new Date(iso).toLocaleString() : "never";
+
+async function loadAdmin() {
+  const fail = (body, cols) => (e) => { $(body).innerHTML = emptyRow(cols, esc(e.message)); };
+  api("/api/v1/users").then(renderUsers).catch(fail("usersBody", 5));
+  api("/api/v1/keys").then(renderKeys).catch(fail("keysBody", 6));
+  loadAudit();
+  api("/api/v1/webhooks?limit=50").then(renderHooks).catch(fail("hooksBody", 5));
 }
-window.addEventListener("hashchange", tabFromHash);  // links, back/forward
-tabFromHash();
+
+function renderUsers(users) {
+  $("usersBody").innerHTML = users.length ? users.map((u) => `<tr data-id="${esc(u.id)}" data-name="${esc(u.username)}">
+    <td>${esc(u.username)}</td>
+    <td><select class="small" data-act="role">${["admin", "operator", "viewer"].map((r) => `<option ${r === u.role ? "selected" : ""}>${r}</option>`).join("")}</select></td>
+    <td class="muted">${esc(when(u.last_login_at))}</td>
+    <td>${u.disabled_at ? '<span class="badge bad">disabled</span>' : '<span class="badge ok">active</span>'}</td>
+    <td class="actions"><button class="btn small" data-act="password">Reset password</button>
+      <button class="btn small" data-act="toggle">${u.disabled_at ? "Enable" : "Disable"}</button>
+      <button class="btn small danger" data-act="delete">Delete</button></td></tr>`).join("")
+    : emptyRow(5, "No users yet. Add the first one above (make it an admin).");
+}
+$("usersBody").addEventListener("change", async (e) => {
+  if (e.target.dataset.act !== "role") return;
+  const row = e.target.closest("tr");
+  try { await api(`/api/v1/users/${row.dataset.id}`, { method: "PATCH", json: { role: e.target.value } }); }
+  catch (err) { alert(err.message); }
+  loadAdmin();
+});
+$("usersBody").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-act]"); if (!btn) return;
+  const row = btn.closest("tr"), id = row.dataset.id, name = row.dataset.name;
+  try {
+    if (btn.dataset.act === "password") {
+      const pw = prompt(`New password for ${name} (10+ characters). They'll be signed out everywhere.`);
+      if (!pw) return;
+      await api(`/api/v1/users/${id}`, { method: "PATCH", json: { password: pw } });
+    } else if (btn.dataset.act === "toggle") {
+      await api(`/api/v1/users/${id}`, { method: "PATCH", json: { disabled: btn.textContent === "Disable" } });
+    } else if (btn.dataset.act === "delete") {
+      if (!confirm(`Delete user ${name}?`)) return;
+      await api(`/api/v1/users/${id}`, { method: "DELETE" });
+    }
+  } catch (err) { alert(err.message); }
+  loadAdmin();
+});
+$("userForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await api("/api/v1/users", { method: "POST", json: { username: $("newUser").value.trim(), password: $("newPass").value, role: $("newRole").value } });
+    $("userForm").reset();
+    $("userResult").innerHTML = "";
+  } catch (err) { $("userResult").innerHTML = `<div class="notice bad">${esc(err.message)}</div>`; }
+  loadAdmin(); loadHealth();
+});
+
+function renderKeys(keys) {
+  $("keysBody").innerHTML = keys.length ? keys.map((k) => `<tr>
+    <td>${esc(k.name)}</td><td class="muted">${esc(k.prefix)}…</td><td>${k.scopes.map((x) => `<span class="badge">${esc(x)}</span>`).join(" ")}</td>
+    <td class="muted">${esc(when(k.last_used_at))}</td>
+    <td>${k.revoked_at ? '<span class="badge bad">revoked</span>' : '<span class="badge ok">active</span>'}</td>
+    <td class="actions">${k.revoked_at ? "" : `<button class="btn small danger" data-key="${esc(k.id)}" data-name="${esc(k.name)}">Revoke</button>`}</td></tr>`).join("")
+    : emptyRow(6, "No device keys yet.");
+}
+$("keysBody").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-key]");
+  if (!btn || !confirm(`Revoke key "${btn.dataset.name}"? Devices using it stop working within 30 seconds.`)) return;
+  try { await api(`/api/v1/keys/${btn.dataset.key}`, { method: "DELETE" }); } catch (err) { alert(err.message); }
+  loadAdmin();
+});
+$("keyForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const scopes = [...$("keyScopes").querySelectorAll("input:checked")].map((i) => i.value);
+  try {
+    const res = await api("/api/v1/keys", { method: "POST", json: { name: $("keyName").value.trim(), scopes } });
+    const kioskLink = scopes.length === 1 && scopes[0] === "attendance"
+      ? `<p class="muted" style="margin-top:8px">Kiosk setup link (open it once on the tablet): <a href="/kiosk.html#key=${encodeURIComponent(res.token)}&device=${encodeURIComponent(res.key.name)}" target="_blank" rel="noopener">open kiosk</a></p>` : "";
+    $("newKey").innerHTML = `<div class="notice ok">Key created. Copy it now; it won't be shown again.<div class="token">${esc(res.token)}</div>${kioskLink}</div>`;
+    $("keyForm").reset();
+    $("keyScopes").querySelector('input[value="attendance"]').checked = true;
+  } catch (err) { $("newKey").innerHTML = `<div class="notice bad">${esc(err.message)}</div>`; }
+  loadAdmin();
+});
+
+async function loadAudit() {
+  const action = $("auditFilter").value.trim();
+  try {
+    const rows = await api(`/api/v1/audit?limit=100${action ? `&action=${encodeURIComponent(action)}` : ""}`);
+    $("auditBody").innerHTML = rows.length ? rows.map((r) => `<tr><td class="muted">${esc(new Date(r.ts * 1000).toLocaleString())}</td>
+      <td>${esc(r.actor)}</td><td>${esc(r.action)}</td><td class="muted">${esc(r.target_type ? `${r.target_type} ${r.target_id || ""}` : "")}</td>
+      <td class="muted">${esc(r.details ? Object.entries(r.details).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`).join(" · ") : "")}</td></tr>`).join("")
+      : emptyRow(5, "Nothing recorded yet.");
+  } catch (err) { $("auditBody").innerHTML = emptyRow(5, esc(err.message)); }
+}
+$("auditRefresh").addEventListener("click", loadAudit);
+$("auditFilter").addEventListener("change", loadAudit);
+
+function renderHooks(rows) {
+  const open = rows.filter((r) => r.status !== "delivered");
+  $("hooksBody").innerHTML = open.length ? open.map((r) => `<tr><td>${esc(r.event)} <span class="muted">${esc(r.event_id.slice(0, 8))}</span></td>
+    <td><span class="badge ${r.status === "failed" ? "bad" : ""}">${esc(r.status)}</span></td><td>${r.attempts}</td>
+    <td class="muted">${esc(r.last_error || "")}</td>
+    <td class="actions">${r.status === "failed" ? `<button class="btn small" data-hook="${r.id}">Retry</button>` : ""}</td></tr>`).join("")
+    : emptyRow(5, "Everything delivered (or no webhook configured).");
+}
+$("hooksBody").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-hook]"); if (!btn) return;
+  try { await api(`/api/v1/webhooks/${btn.dataset.hook}/retry`, { method: "POST" }); } catch (err) { alert(err.message); }
+  loadAdmin();
+});
+
+// ---- start ---------------------------------------------------------------------------
+window.addEventListener("hashchange", () => { const t = location.hash.slice(1); if (TAB_SCOPES[t] && allowed(t)) selectTab(t); });
+loadHealth().then(ensureSession);
 </script>
 </body>
 </html>

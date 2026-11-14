@@ -32,11 +32,43 @@ def make_backup(db: Database, backup_dir: Path, keep: int) -> Path:
 
 def apply_retention(db: Database, settings: Settings, now: Optional[float] = None) -> dict:
     now = time.time() if now is None else now
-    removed = {"attendance": 0, "webhooks": 0}
+    removed = {"attendance": 0, "webhooks": 0, "audit": 0, "sessions": 0, "gallery_changes": 0}
     if settings.attendance_retention_days > 0:
         removed["attendance"] = db.purge_attendance_before(now - settings.attendance_retention_days * 86400)
+    if settings.audit_retention_days > 0:
+        removed["audit"] = db.purge_audit_before(now - settings.audit_retention_days * 86400)
     removed["webhooks"] = db.purge_webhooks_before(now - _DELIVERED_WEBHOOK_RETENTION_DAYS * 86400)
+    removed["sessions"] = db.purge_expired_sessions(now)
+    removed["gallery_changes"] = db.purge_gallery_changes_before(
+        now - 86400
+    )  # servers poll every few seconds
     return removed
+
+
+class Periodic:
+    """Run `fn` every `interval` seconds on a daemon thread (errors are logged, not fatal)."""
+
+    def __init__(self, name: str, interval: float, fn) -> None:
+        self.name, self.interval, self.fn = name, interval, fn
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> None:
+        if self._thread is None and self.interval > 0:
+            self._thread = threading.Thread(target=self._run, name=self.name, daemon=True)
+            self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=10)
+
+    def _run(self) -> None:
+        while not self._stop.wait(self.interval):
+            try:
+                self.fn()
+            except Exception:
+                log.exception("%s failed", self.name)
 
 
 class MaintenanceWorker:
@@ -68,7 +100,7 @@ class MaintenanceWorker:
     def run_once(self, now: Optional[float] = None) -> None:
         now = time.time() if now is None else now
         interval = self.settings.backup_interval_hours * 3600
-        if interval > 0:
+        if interval > 0 and self.db.dialect == "sqlite":  # PostgreSQL: use pg_dump / managed backups
             backups = list_backups(self.settings.backup_dir)
             last = backups[-1].stat().st_mtime if backups else 0.0
             if now - last >= interval:

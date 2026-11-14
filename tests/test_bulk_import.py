@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import dataclasses
 import socket
 import threading
 import time
@@ -11,15 +10,16 @@ from pathlib import Path
 
 import pytest
 import uvicorn
+from conftest import make_test_settings, reset_test_database
 
-from face_match.config import Settings
 from face_match.main import create_app
 from face_match.tools import bulk_import
 
 
 @pytest.fixture
 def live_server(tmp_path):
-    app = create_app(dataclasses.replace(Settings(), data_dir=tmp_path / "data"))
+    reset_test_database()
+    app = create_app(make_test_settings(tmp_path))
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", 0))
     server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))

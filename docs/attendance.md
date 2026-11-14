@@ -43,9 +43,11 @@ anything else: in our evaluation, going from 1 to 3 photos per person cut "unkno
 
 ## 4. Daily use
 
-- **Kiosk:** a tablet or laptop at the entrance, with the demo UI open on **Identify**, **Record attendance**
-  ticked, and the camera started. Each person needs 1–2 seconds in front of it. If 400 people arrive within
-  20 minutes, use two entry points; all kiosks share one service.
+- **Kiosk:** a tablet or laptop at the entrance running the full-screen `/kiosk.html` page with an attendance-only
+  device key (see [admin-and-kiosk.md](admin-and-kiosk.md)). Each person needs 1–2 seconds in front of it. One server
+  handles about 25–35 kiosks; if 400 people arrive within 20 minutes, use 2–4 entry points.
+- **Teachers and office staff:** sign in as *operators* to enroll students and view records; give management
+  *viewer* accounts.
 - **Records:** **Present / Absent** for any date, plus search.
 - **Your portal:** receives each check-in by webhook or pulls the daily summary (see [integration.md](integration.md)).
 

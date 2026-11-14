@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -34,7 +35,7 @@ from .schemas import (
     RecognizeResponse,
     RejectedImage,
 )
-from .security import SCOPES
+from .security import MIN_PASSWORD_LENGTH, ROLES, SCOPES, USERNAME_PATTERN, hash_password
 from .storage import Database, Row
 
 # When a photo has several faces, the largest is used for enrollment only if
@@ -108,7 +109,10 @@ class FaceService:
         self.liveness = liveness
         self._on_event_queued = on_event_queued or (lambda: None)
         self.gallery = FaceGallery(engine.embedding_size)
+        # Read the change-feed position first, so nothing written during the load is missed.
+        self._gallery_revision = db.gallery_revision()
         self.gallery.load(db.all_embeddings())
+        self._sync_lock = threading.Lock()
         self._tz = ZoneInfo(settings.timezone) if settings.timezone else None
 
     # ---- time helpers --------------------------------------------------------
@@ -241,6 +245,26 @@ class FaceService:
             faces=[DetectedFace(**self._face_fields(f, decoded)) for f in faces],
             processing_ms=self._elapsed_ms(start),
         )
+
+    def sync_gallery(self) -> int:
+        """Apply enrollments and deletions made by other servers sharing the database.
+
+        Returns the number of people refreshed. Cheap when nothing changed (one indexed query).
+        """
+        with self._sync_lock:
+            if self.db.gallery_revision() <= self._gallery_revision:
+                return 0
+            changes = self.db.gallery_changes_since(self._gallery_revision)
+            latest: Dict[str, str] = {}
+            for change in changes:
+                latest[change["person_id"]] = change["op"]
+            for person_id, op in latest.items():
+                self.gallery.remove(person_id)
+                if op != "delete":
+                    self.gallery.add(person_id, self.db.embeddings_for(person_id))
+            if changes:
+                self._gallery_revision = max(c["id"] for c in changes)
+            return len(latest)
 
     def _count_face(self, endpoint: str, outcome: str) -> None:
         self.metrics.inc("facematch_faces_total", endpoint=endpoint, outcome=outcome)
@@ -379,9 +403,9 @@ class FaceService:
         )
 
     def list_attendance(
-        self, day: Optional[str], person_id: Optional[str], limit: int
+        self, day: Optional[str], person_id: Optional[str], limit: int, offset: int = 0
     ) -> List[AttendanceEvent]:
-        return [self._event(r) for r in self.db.list_attendance(day, person_id, limit)]
+        return [self._event(r) for r in self.db.list_attendance(day, person_id, limit, offset)]
 
     def attendance_summary(self, day: Optional[str]) -> List[AttendanceSummary]:
         rows = self.db.attendance_summary(day or self.today())
@@ -616,3 +640,70 @@ class FaceService:
         if not self.db.retry_webhook(delivery_id):
             raise ServiceError(404, "delivery_not_found", "Delivery not found or already delivered.")
         self._on_event_queued()
+
+    # ---- admin UI users ---------------------------------------------------------------
+
+    @staticmethod
+    def _check_password(password: Optional[str]) -> None:
+        if password is not None and len(password) < MIN_PASSWORD_LENGTH:
+            raise ServiceError(
+                422, "weak_password", f"Passwords need at least {MIN_PASSWORD_LENGTH} characters."
+            )
+
+    @staticmethod
+    def _check_role(role: Optional[str]) -> None:
+        if role is not None and role not in ROLES:
+            raise ServiceError(422, "invalid_role", f"Role must be one of: {', '.join(ROLES)}.")
+
+    def create_user(self, username: str, password: str, role: str) -> Row:
+        username = (username or "").strip()
+        if not USERNAME_PATTERN.match(username):
+            raise ServiceError(
+                422, "invalid_username", "Usernames are 3-64 characters: letters, digits and _ . @ -"
+            )
+        self._check_password(password)
+        self._check_role(role)
+        if self.db.find_user(username):
+            raise ServiceError(409, "user_exists", f"User '{username}' already exists.")
+        return self.db.create_user(username, hash_password(password), role, self._iso(time.time()))
+
+    def _guard_last_admin(self, user: Row) -> None:
+        if user["role"] == "admin" and not user["disabled_at"] and self.db.count_admins() <= 1:
+            raise ServiceError(
+                409, "last_admin", "This is the only active admin. Create another admin first."
+            )
+
+    def update_user(
+        self,
+        user_id: str,
+        role: Optional[str] = None,
+        password: Optional[str] = None,
+        disabled: Optional[bool] = None,
+    ) -> Row:
+        user = self.db.get_user(user_id)
+        if user is None:
+            raise ServiceError(404, "user_not_found", "User not found.")
+        self._check_role(role)
+        self._check_password(password)
+        if (role is not None and role != "admin") or disabled:
+            self._guard_last_admin(user)
+        fields: Dict[str, Any] = {}
+        if role is not None:
+            fields["role"] = role
+        if password is not None:
+            fields["password_hash"] = hash_password(password)
+        if disabled is not None:
+            fields["disabled_at"] = self._iso(time.time()) if disabled else None
+        if fields:
+            self.db.update_user(user_id, **fields)
+        if password is not None or disabled:
+            self.db.delete_sessions_for_user(user_id)  # sign out everywhere
+        return self.db.get_user(user_id)  # type: ignore[return-value]
+
+    def delete_user(self, user_id: str) -> Row:
+        user = self.db.get_user(user_id)
+        if user is None:
+            raise ServiceError(404, "user_not_found", "User not found.")
+        self._guard_last_admin(user)
+        self.db.delete_user(user_id)
+        return user

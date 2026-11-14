@@ -32,6 +32,11 @@ curl localhost:8000/api/v1/keys -H "X-API-Key: $API_KEY"                    # li
 curl -X DELETE localhost:8000/api/v1/keys/3f9c… -H "X-API-Key: $API_KEY"    # revoke immediately
 ```
 
+**Browser sessions (admin UI):** `POST /api/v1/auth/login` with `{"username", "password"}` sets an HttpOnly session
+cookie and returns a `csrf_token`. Send it as `X-CSRF-Token` on every `POST`/`PUT`/`PATCH`/`DELETE` made with the cookie.
+`GET /api/v1/auth/me` shows who you are and your scopes; `POST /api/v1/auth/logout` ends the session. User roles map to
+scopes: `admin` → admin, `operator` → attendance, enroll, read, recognize; `viewer` → read.
+
 You can also manage keys from the server's shell: `face-match keys create --name gate-1 --scopes attendance`,
 `face-match keys list` and `face-match keys revoke <id>`.
 
@@ -47,7 +52,7 @@ header. Every response has an `X-Request-ID` header (pass your own to correlate 
 | `POST` | `/api/v1/detect` | Faces, boxes and 5 landmarks. No identity lookup |
 | `POST` | `/api/v1/recognize?liveness=` | Identify every face. Records nothing. `liveness=true` adds a `liveness_score` |
 | `POST` | `/api/v1/persons` | Enroll: `name`, optional `external_id`, 1–10 `images`, optional `allow_duplicate` |
-| `GET` | `/api/v1/persons` | List people. `?external_id=` looks one up by your ID |
+| `GET` | `/api/v1/persons?external_id=&limit=&offset=` | List people (sorted by name, total in `X-Total-Count`). `?external_id=` looks one up by your ID |
 | `GET` | `/api/v1/persons/{id}` | One person |
 | `POST` | `/api/v1/persons/{id}/faces` | Add photos (they must match the person's existing photos) |
 | `PUT` | `/api/v1/persons/{id}/faces` | Replace all photos. All-or-nothing: if no new photo is usable, nothing changes |
@@ -59,6 +64,11 @@ header. Every response has an `X-Request-ID` header (pass your own to correlate 
 | `GET` | `/api/v1/webhooks?status=pending\|delivered\|failed` | Webhook delivery queue (admin) |
 | `POST` | `/api/v1/webhooks/{id}/retry` | Retry a failed delivery (admin) |
 | `GET` | `/metrics` | Prometheus metrics (`metrics` scope) |
+| `POST` | `/api/v1/auth/login` · `/auth/logout` | UI sign-in and sign-out (session cookie + CSRF token) |
+| `GET` | `/api/v1/auth/me` | Current identity, role and scopes |
+| `GET` / `POST` | `/api/v1/users` | List or create users (admin) |
+| `PATCH` / `DELETE` | `/api/v1/users/{id}` | Change role, reset password, disable or delete (admin). The last admin is protected |
+| `GET` | `/api/v1/audit?action=&actor=&limit=&offset=` | Audit log, newest first (admin) |
 
 ## Recognize
 
@@ -159,10 +169,10 @@ Every error has the same shape and a stable `code`:
 |---|---|
 | 400 | `invalid_image` |
 | 401 | `unauthorized` |
-| 403 | `forbidden` (the key lacks the scope) |
+| 403 | `forbidden` (the key or role lacks the scope), `csrf_failed` (session request without a valid `X-CSRF-Token`) |
 | 429 | `rate_limited` (see `Retry-After`) |
 | 503 | `busy` (see `Retry-After`) |
 | 404 | `person_not_found` |
-| 409 | `already_enrolled`, `external_id_exists` |
+| 409 | `already_enrolled`, `external_id_exists`, `user_exists`, `last_admin` |
 | 413 | `image_too_large` |
 | 422 | `validation_error`, `no_usable_face` (details list each rejected photo), `invalid_name`, `no_images`, `too_many_images` |

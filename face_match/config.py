@@ -54,12 +54,16 @@ class Settings:
     # CLI only allows on localhost unless allow_no_auth is set (see cli.check_auth).
     api_key: str = ""
     allow_no_auth: bool = False
+    session_hours: float = 12.0  # admin UI login lifetime
+    session_cookie_secure: str = "auto"  # "auto" (Secure when the request is HTTPS), "true" or "false"
     cors_origins: List[str] = field(default_factory=lambda: ["*"])
     # Abuse protection
     rate_limit_per_minute: int = 600  # requests per API key (or per IP when open); 0 disables
     auth_failures_per_minute: int = 20  # failed authentications per IP before 429
     max_concurrent_images: int = 8  # image requests processed at once; more wait, then get 503
     # Storage (relative paths resolve against the working directory)
+    database_url: str = ""  # postgresql://... to share data between several servers; empty = SQLite
+    gallery_sync_seconds: float = 2.0  # how often each server picks up enrollments made by others
     data_dir: Path = Path("data")
     models_dir: Path = Path("models")
     auto_download_models: bool = True
@@ -86,6 +90,7 @@ class Settings:
     backup_interval_hours: float = 24.0  # automatic SQLite backups into DATA_DIR/backups; 0 disables
     backup_keep: int = 7  # newest backups to keep
     attendance_retention_days: int = 0  # delete attendance events older than this; 0 keeps forever
+    audit_retention_days: int = 0  # delete audit entries older than this; 0 keeps forever
     # Liveness (anti-spoofing) for /attendance: "on" or "off"
     liveness: str = "on"
     liveness_threshold: float = 0.5  # minimum "real face" probability
@@ -115,6 +120,10 @@ class Settings:
             log_format=_str("LOG_FORMAT", defaults.log_format).lower(),
             api_key=_str("API_KEY", ""),
             allow_no_auth=_bool("ALLOW_NO_AUTH", False),
+            session_hours=_float("SESSION_HOURS", defaults.session_hours),
+            session_cookie_secure=_str("SESSION_COOKIE_SECURE", defaults.session_cookie_secure).lower(),
+            database_url=_str("DATABASE_URL", ""),
+            gallery_sync_seconds=_float("GALLERY_SYNC_SECONDS", defaults.gallery_sync_seconds),
             cors_origins=[o.strip() for o in origins.split(",") if o.strip()],
             rate_limit_per_minute=_int("RATE_LIMIT_PER_MINUTE", defaults.rate_limit_per_minute),
             auth_failures_per_minute=_int("AUTH_FAILURES_PER_MINUTE", defaults.auth_failures_per_minute),
@@ -143,6 +152,7 @@ class Settings:
             backup_interval_hours=_float("BACKUP_INTERVAL_HOURS", defaults.backup_interval_hours),
             backup_keep=_int("BACKUP_KEEP", defaults.backup_keep),
             attendance_retention_days=_int("ATTENDANCE_RETENTION_DAYS", defaults.attendance_retention_days),
+            audit_retention_days=_int("AUDIT_RETENTION_DAYS", defaults.audit_retention_days),
             liveness=_str("LIVENESS", defaults.liveness).lower(),
             liveness_threshold=_float("LIVENESS_THRESHOLD", defaults.liveness_threshold),
         )

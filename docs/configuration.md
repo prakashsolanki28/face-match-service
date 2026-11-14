@@ -14,6 +14,8 @@ take precedence). Copy [`.env.example`](../.env.example) to get started. Every s
 | `API_KEY` | *(empty)* | The **admin** key (all permissions). Clients send it as `X-API-Key` or `Authorization: Bearer …`. Create limited device keys with it (see [api.md](api.md#authentication)). An API key, or at least one device key, is **required whenever `HOST` is not localhost** |
 | `ALLOW_NO_AUTH` | `false` | Set `true` to run an open API on a network on purpose (e.g. behind a private gateway) |
 | `CORS_ORIGINS` | `*` | Comma-separated origins allowed to call the API from a browser. Restrict in production |
+| `SESSION_HOURS` | `12` | How long a UI sign-in lasts |
+| `SESSION_COOKIE_SECURE` | `auto` | `auto` marks the session cookie Secure when the request is HTTPS (directly or via a trusted proxy); `true`/`false` to force |
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Proxies whose `X-Forwarded-For` header is trusted for the client IP (used by rate limiting). Set it to your reverse proxy's address |
 
 ## Abuse protection
@@ -28,7 +30,9 @@ take precedence). Copy [`.env.example`](../.env.example) to get started. Every s
 
 | Variable | Default | Notes |
 |---|---|---|
-| `DATA_DIR` | `./data` | SQLite database (`facematch.db`): people, embeddings, attendance. Back it up |
+| `DATABASE_URL` | *(empty)* | `postgresql://user:pass@host:5432/db` to share data between several servers (needs the `[postgres]` extra, included in the Docker image). Empty uses SQLite in `DATA_DIR` |
+| `GALLERY_SYNC_SECONDS` | `2` | How often each server picks up enrollments made by other servers |
+| `DATA_DIR` | `./data` | SQLite database (`facematch.db`) and backups. Back it up |
 | `MODELS_DIR` | `./models` | ONNX models |
 | `AUTO_DOWNLOAD_MODELS` | `true` | Download missing models at start-up (SHA-256 verified). The Docker image bakes them in |
 
@@ -69,6 +73,7 @@ take precedence). Copy [`.env.example`](../.env.example) to get started. Every s
 |---|---|---|
 | `BACKUP_INTERVAL_HOURS` | `24` | Automatic consistent backups into `DATA_DIR/backups/` (owner-only files). `0` disables |
 | `BACKUP_KEEP` | `7` | Number of backups to keep |
+| `AUDIT_RETENTION_DAYS` | `0` | Delete audit entries older than this. `0` keeps them forever |
 | `ATTENDANCE_RETENTION_DAYS` | `0` | Delete attendance events older than this (checked hourly). `0` keeps them forever. Delivered webhooks are always purged after 30 days |
 
 See [accuracy.md](accuracy.md) for how the recognition defaults were chosen.

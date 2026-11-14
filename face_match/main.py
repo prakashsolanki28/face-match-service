@@ -21,13 +21,13 @@ from .api import require, router
 from .config import STATIC_DIR, Settings
 from .engine import OpenCVFaceEngine
 from .liveness import load_liveness
-from .maintenance import MaintenanceWorker
+from .maintenance import MaintenanceWorker, Periodic
 from .model_store import ensure_models
 from .observability import Metrics, configure_logging, process_gauges, request_id_var
 from .schemas import Health
 from .security import ImageGate, KeyStore, RateLimiter
 from .service import FaceService, ServiceError
-from .storage import Database
+from .storage import open_database
 from .webhook import WebhookDispatcher
 
 log = logging.getLogger("face_match")
@@ -48,7 +48,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         models["detector"], models["recognizer"], score_threshold=settings.detection_threshold
     )
     liveness = load_liveness(settings, models)
-    db = Database(settings.db_path)
+    db = open_database(settings)
     metrics = Metrics()
 
     dispatcher = None
@@ -71,6 +71,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     )
     keys = KeyStore(db, settings.api_key)
     maintenance = MaintenanceWorker(db, settings, metrics)
+    # Picks up enrollments made by other servers sharing the database (cheap when idle).
+    gallery_sync = Periodic("gallery-sync", settings.gallery_sync_seconds, service.sync_gallery)
 
     stats = db.stats()
     log.info(
@@ -102,7 +104,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if dispatcher:
             dispatcher.start()
         maintenance.start()
+        gallery_sync.start()
         yield
+        gallery_sync.stop()
         maintenance.stop()
         if dispatcher:
             dispatcher.stop()
@@ -194,6 +198,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             min_face_size=settings.min_face_size,
             liveness=bool(liveness and settings.liveness == "on"),
             auth_required=keys.auth_enabled(),
+            login=db.has_active_users(),
         )
 
     @app.get(

@@ -3,6 +3,29 @@
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-11-14
+
+### Added
+- **Sign-in accounts** for the web UI with roles `admin`, `operator` and `viewer`: scrypt password hashes, HttpOnly
+  SameSite=Strict session cookies, a per-session CSRF token, throttled login attempts, and sign-out everywhere on
+  password reset or disable. The last admin is protected. Endpoints `/api/v1/auth/*` and `/api/v1/users`, plus the
+  CLI `face-match users`.
+- **Audit log** of enrollments, deletions, key and user changes, sign-ins and webhook retries (`/api/v1/audit`,
+  Admin tab, `AUDIT_RETENTION_DAYS`).
+- **Kiosk page** `/kiosk.html`: full-screen check-in for tablets with an attendance-only device key. Setup link from
+  the Admin tab, wake lock, automatic retry and back-off, and it notices revoked keys.
+- **Admin tab** in the web UI: users, device keys (with a kiosk setup link), audit log, webhook deliveries.
+- **Several servers:** optional PostgreSQL backend (`DATABASE_URL`, `[postgres]` extra, included in the Docker image).
+  Enrollments propagate through a change feed (`GALLERY_SYNC_SECONDS`), check-ins use per-person locks, and webhook
+  deliveries are claimed with `SKIP LOCKED`. CI runs the full suite against PostgreSQL.
+- **Pagination** (`limit`/`offset`, `X-Total-Count`) for people, attendance and webhook lists.
+- **`face-match loadtest`** for capacity planning, with measured numbers in docs/deployment.md.
+
+### Changed
+- Operators may also take attendance (the `attendance` scope).
+- Health reports `login` (whether accounts exist).
+- Memory figures in the docs now distinguish idle (about 110 MB) from sustained load (about 250 MB).
+
 ## [1.1.0] - 2026-11-14
 
 Production hardening.

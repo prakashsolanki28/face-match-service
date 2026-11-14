@@ -8,11 +8,13 @@
 camera frame and get back *who is in it*, over a simple REST API that any portal, app or backend can call.
 Built-in attendance logging, bulk import and signed webhooks cover the common "who arrived today?" use case.
 
-- **Light:** about 110 MB of RAM, about 10 ms per frame on CPU, 43 MB of models. No GPU, no compiler, no database server.
+- **Light:** about 110 MB of RAM idle (about 250 MB under load), about 25 ms per frame on CPU, 43 MB of models. No GPU,
+  no compiler, and no database server required (SQLite by default, PostgreSQL for several servers).
 - **Safe by design:** it refuses to guess between look-alikes, tells you *why* a face is unknown, rejects photos
   and screens held up to the camera (liveness), and stores embeddings rather than photos.
-- **Production features:** per-device API keys with permissions, rate limiting, webhooks that retry until
-  delivered, Prometheus metrics, JSON logs, automatic backups, retention and right-to-erasure.
+- **Production features:** sign-in accounts with roles, an audit log, a locked-down kiosk page, per-device API keys,
+  rate limiting, webhooks that retry until delivered, Prometheus metrics, JSON logs, backups, retention,
+  right to erasure, and several servers sharing PostgreSQL.
 - **Commercially usable:** Apache-2.0 code, with permissively licensed models (YuNet: MIT, SFace: Apache-2.0).
 - **Measured:** 97.9% correct with 5 photos per person and **no wrong names** on a 31-person, 2,500-photo
   evaluation. See [docs/accuracy.md](docs/accuracy.md).
@@ -76,7 +78,9 @@ back to your records.
 | **Matching** | 1:N identification against everyone enrolled (`/recognize`), with a reason for every unknown face |
 | **Enrollment** | Create, add or replace photos. Quality checks reject photos with no face, several faces, a face too small, inconsistent photos or duplicates |
 | **Attendance** | `/attendance` logs check-ins, with liveness (anti-spoofing), a cooldown, daily present/absent summary and webhooks that retry until delivered |
-| **Security** | Admin key plus scoped device keys (a kiosk key can only mark attendance), rate limiting, overload protection, secure defaults |
+| **Security** | Sign-in accounts (admin/operator/viewer) with CSRF-protected sessions, scoped device keys (a kiosk key can only mark attendance), audit log, rate limiting, secure defaults |
+| **Kiosk** | Full-screen `/kiosk.html` check-in page for tablets: no admin functions, keeps the screen awake, recovers from network drops, notices revoked keys |
+| **Scale** | One server handles about 25–35 kiosks; add servers behind a load balancer with PostgreSQL (`DATABASE_URL`) |
 | **Operations** | Prometheus `/metrics`, JSON logs with request ids, automatic backups, retention, `face-match pilot-report` for go-live validation |
 | **Bulk import** | `face-match import` enrolls hundreds of people from a CSV roster and photo folder, with a report |
 | **Evaluation** | `face-match evaluate` measures accuracy on your own photos before you go live |
@@ -90,6 +94,7 @@ back to your records.
 - [Integrating with a portal](docs/integration.md): IDs, webhooks, bulk import, keeping photos up to date
 - [Attendance guide](docs/attendance.md): schools and offices with hundreds of people
 - [Pilot guide](docs/pilot.md): validate on your own people before go-live
+- [Accounts, kiosks and audit log](docs/admin-and-kiosk.md): roles, first admin, kiosk setup
 - [Accuracy](docs/accuracy.md): how it's measured, results, tuning
 - [Privacy & security](docs/privacy.md): biometric data, consent, liveness
 
