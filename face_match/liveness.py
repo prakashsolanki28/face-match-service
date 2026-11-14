@@ -1,8 +1,8 @@
 """Passive liveness (anti-spoofing): Minivision's MiniFASNet pair on OpenCV DNN.
 
 Detects a face *re-captured* from a print or a screen held up to the camera. It does not
-detect a digital photo sent straight to the API (that looks "live"), so attendance must come
-from a trusted camera. See docs/privacy.md.
+detect a digital photo sent straight to the API (that looks "live"), so frames that decide
+who is present must come from a trusted camera. See docs/privacy.md.
 
 Pre- and post-processing follow the original implementation exactly
 (minivision-ai/Silent-Face-Anti-Spoofing @ b6d5f04):

@@ -5,29 +5,28 @@ Every route needs the API key (the API_KEY setting), which gives full access.
 
 from __future__ import annotations
 
+import json
 from contextlib import contextmanager
-from datetime import date
-from typing import Annotated, Iterator, List, Literal, Optional
+from typing import Annotated, Iterator, List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, Header, Path, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, Header, Path, Query, Request, Response, UploadFile
 from fastapi.security import APIKeyHeader
 
 from .observability import request_id_var
 from .schemas import (
-    AttendanceEvent,
-    AttendanceSummary,
+    METADATA_DESCRIPTION,
+    METADATA_EXAMPLE,
     AuditEntry,
     AuthCheck,
     DetectResponse,
     EnrollResponse,
     ErrorResponse,
-    MarkAttendanceResponse,
     Person,
+    PersonUpdate,
     RecognizeResponse,
-    WebhookDelivery,
 )
 from .security import Busy, RateLimited
-from .service import FaceService, ImageInput, ServiceError
+from .service import FaceService, ImageInput, ServiceError, parse_metadata
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -157,12 +156,25 @@ def detect_faces(
 def recognize_faces(
     request: Request,
     image: UploadFile = File(..., description=_PHOTO),
-    liveness: bool = Query(False, description="Also return liveness_score for each face."),
+    liveness: Optional[bool] = Query(
+        None,
+        description="Check recognised faces for a printed photo or a screen held up to the camera; "
+        "one that fails is returned without its match (unknown_reason liveness_failed). Defaults to "
+        "the server's LIVENESS setting. Use false for uploaded photos, which aren't re-captured.",
+    ),
+    closest: bool = Query(
+        False,
+        description="For testing and tuning: also return the nearest enrolled person for unknown faces.",
+    ),
     service: FaceService = Depends(get_service),
 ):
-    """Find faces and identify enrolled people. Does not record anything."""
+    """Find faces and identify enrolled people. Does not record anything.
+
+    Each recognised face has `match.person_id` (and your `external_id`): use these to act on the
+    result, for example to mark people present in your own system.
+    """
     with image_slot(request):
-        return service.recognize(_read(image, service).data, check_liveness=liveness)
+        return service.recognize(_read(image, service).data, check_liveness=liveness, include_closest=closest)
 
 
 # ---- persons -----------------------------------------------------------------
@@ -178,24 +190,38 @@ def recognize_faces(
 )
 def enroll_person(
     request: Request,
-    name: str = Form(..., max_length=200, description="Full name.", examples=["Asha Verma"]),
+    images: List[UploadFile] = File(..., description="1-10 clear, front-facing photos."),
+    name: Optional[str] = Form(
+        None, max_length=200, description="Full name. Optional.", examples=["Asha Verma"]
+    ),
     external_id: Optional[str] = Form(
         None,
         max_length=200,
-        description="Your system's ID for this person, e.g. employee code.",
-        examples=["EMP-001"],
+        description="Your system's ID for this person, e.g. admission number. Optional.",
+        examples=["STU0001"],
     ),
-    images: List[UploadFile] = File(..., description="1-10 clear, front-facing photos."),
+    metadata: Optional[str] = Form(
+        None,
+        description="Optional. " + METADATA_DESCRIPTION + " Send it as JSON text in this form field.",
+        examples=[json.dumps(METADATA_EXAMPLE)],
+    ),
     allow_duplicate: bool = Form(
         False, description="Enroll even if the face resembles someone already enrolled (twins)."
     ),
     service: FaceService = Depends(get_service),
 ):
-    """Enroll a person. 3-5 photos (slightly different angles/lighting) give the best accuracy."""
+    """Enroll a person. Only photos are required: the response's `person.id` is returned as
+    `person_id` in every match, so store it in your system. 3-5 photos (slightly different
+    angles/lighting) give the best accuracy."""
     _check_count(images)
+    fields = parse_metadata(metadata)  # check before the slower photo processing
     with image_slot(request):
         result = service.enroll(
-            name, external_id, [_read(f, service) for f in images], allow_duplicate=allow_duplicate
+            name,
+            external_id,
+            [_read(f, service) for f in images],
+            allow_duplicate=allow_duplicate,
+            metadata=fields,
         )
     audit(
         request,
@@ -238,6 +264,28 @@ def list_persons(
 def get_person(person_id: PersonId, service: FaceService = Depends(get_service)):
     """One person, by the id returned at enrollment."""
     return service.get_person(person_id)
+
+
+@router.patch(
+    "/persons/{person_id}",
+    summary="Update a person",
+    response_model=Person,
+    tags=["persons"],
+    responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+def update_person(
+    request: Request,
+    person_id: PersonId,
+    changes: Annotated[PersonUpdate, Body()],
+    service: FaceService = Depends(get_service),
+):
+    """Change a person's name, external_id or metadata. Only the fields you send change;
+    `metadata` replaces all of the person's own fields. Photos are changed with /faces."""
+    fields = changes.model_dump(include=changes.model_fields_set)
+    person = service.update_person(person_id, fields)
+    # Which fields changed, not their values: the audit log shouldn't copy personal data.
+    audit(request, "person.update", "person", person_id, {"fields": sorted(fields)})
+    return person
 
 
 @router.post(
@@ -300,123 +348,19 @@ def replace_faces(
 def delete_person(
     request: Request,
     person_id: PersonId,
-    erase_history: bool = Query(
-        False,
-        description="Also delete the person's attendance events and queued webhooks (right to erasure).",
-    ),
     service: FaceService = Depends(get_service),
 ):
-    """Delete a person and their face data. Attendance history is kept unless erase_history=true."""
+    """Delete a person and all their face data."""
     person = service.get_person(person_id)
-    service.delete_person(person_id, erase_history=erase_history)
+    service.delete_person(person_id)
     audit(
         request,
         "person.delete",
         "person",
         person_id,
-        {"name": person.name, "external_id": person.external_id, "erase_history": erase_history},
+        {"name": person.name, "external_id": person.external_id},
     )
     return Response(status_code=204)
-
-
-# ---- attendance --------------------------------------------------------------
-
-
-@router.post(
-    "/attendance",
-    summary="Mark attendance",
-    response_model=MarkAttendanceResponse,
-    tags=["attendance"],
-)
-def mark_attendance(
-    request: Request,
-    image: UploadFile = File(..., description=_PHOTO),
-    device_id: Optional[str] = Form(
-        None, max_length=100, description="Camera/kiosk identifier.", examples=["gate-1"]
-    ),
-    service: FaceService = Depends(get_service),
-):
-    """Recognise everyone in the frame and record attendance.
-
-    Repeat sightings within ATTENDANCE_COOLDOWN_SECONDS return `already_marked`. With liveness on,
-    a face that looks like a photo or screen returns `liveness_failed` and is not recorded.
-    """
-    with image_slot(request):
-        response, _ = service.mark_attendance(_read(image, service).data, device_id)
-    return response
-
-
-@router.get(
-    "/attendance",
-    summary="List attendance events",
-    response_model=List[AttendanceEvent],
-    tags=["attendance"],
-)
-def list_attendance(
-    day: Optional[date] = Query(
-        None, alias="date", description="YYYY-MM-DD; omit for all days.", examples=["2026-01-15"]
-    ),
-    person_id: Optional[str] = Query(None, description="Only this person's events."),
-    limit: int = Query(200, ge=1, le=5000, description="Page size."),
-    offset: Offset = 0,
-    service: FaceService = Depends(get_service),
-):
-    """Raw attendance events, newest first."""
-    return service.list_attendance(day.isoformat() if day else None, person_id, limit, offset)
-
-
-@router.get(
-    "/attendance/summary",
-    summary="Daily attendance summary",
-    response_model=List[AttendanceSummary],
-    tags=["attendance"],
-)
-def attendance_summary(
-    day: Optional[date] = Query(
-        None, alias="date", description="YYYY-MM-DD; defaults to today.", examples=["2026-01-15"]
-    ),
-    service: FaceService = Depends(get_service),
-):
-    """One row per person for the day: first seen (check-in), last seen (check-out)."""
-    return service.attendance_summary(day.isoformat() if day else None)
-
-
-# ---- webhook deliveries ---------------------------------------------------
-
-
-@router.get(
-    "/webhooks",
-    summary="List webhook deliveries",
-    response_model=List[WebhookDelivery],
-    tags=["admin"],
-)
-def list_webhooks(
-    status: Optional[Literal["pending", "delivered", "failed"]] = Query(
-        None, description="Only this status: pending, delivered or failed."
-    ),
-    limit: int = Query(100, ge=1, le=1000, description="Page size."),
-    offset: Offset = 0,
-    service: FaceService = Depends(get_service),
-):
-    """Webhook delivery queue, newest first. Failed deliveries can be retried."""
-    return [WebhookDelivery(**row) for row in service.db.list_webhooks(status, limit, offset)]
-
-
-@router.post(
-    "/webhooks/{delivery_id}/retry",
-    summary="Retry a webhook delivery",
-    status_code=202,
-    tags=["admin"],
-)
-def retry_webhook(
-    delivery_id: Annotated[int, Path(description="The delivery's id, from GET /webhooks.")],
-    request: Request,
-    service: FaceService = Depends(get_service),
-):
-    """Send a failed webhook delivery again."""
-    service.retry_webhook(delivery_id)
-    audit(request, "webhook.retry", "webhook", str(delivery_id))
-    return Response(status_code=202)
 
 
 # ---- auth ----------------------------------------------------------------------------------------
@@ -442,9 +386,9 @@ def check_api_key(request: Request):
 def list_audit(
     limit: int = Query(100, ge=1, le=1000, description="Page size."),
     offset: Offset = 0,
-    action: Optional[str] = Query(None, description="Filter, e.g. person.* or key.revoke"),
+    action: Optional[str] = Query(None, description="Filter, e.g. person.* or person.update"),
     actor: Optional[str] = Query(None, description="Exact actor, e.g. api_key."),
     service: FaceService = Depends(get_service),
 ):
-    """Who changed what: enrollments, photo changes, deletions, keys, webhook retries. Newest first."""
+    """Who changed what: enrollments, updates, photo changes and deletions. Newest first."""
     return [AuditEntry(**row) for row in service.db.list_audit(limit, offset, action, actor)]

@@ -7,8 +7,6 @@ import time
 
 from fakes import Spec, face_png
 
-from face_match.storage import open_database
-
 
 def _img(person=1):
     return {"image": ("f.png", face_png(Spec(person)), "image/png")}
@@ -47,37 +45,34 @@ def test_background_sync_picks_up_changes(make_client):
         assert len(server_b.app.state.service.gallery) == 1
 
 
-def test_a_webhook_delivery_is_claimed_by_only_one_server(client):
-    _enroll(client)
-    person = client.app.state.service.db.list_persons()[0]
-    db_a, db_b = open_database(client.app.state.settings), open_database(client.app.state.settings)
-    try:
-        db_a.mark_attendance(person, 0.9, None, time.time(), "2026-01-01", "t", 0, enqueue_webhook=True)
-        assert len(db_a.claim_due_webhooks(time.time())) == 1
-        assert db_b.claim_due_webhooks(time.time()) == []
-    finally:
-        db_a.close()
-        db_b.close()
+def test_updates_are_seen_by_the_other_server_at_once(make_client):
+    with make_client() as server_a, make_client() as server_b:
+        person_id = _enroll(server_a).json()["person"]["id"]
+        server_b.app.state.service.sync_gallery()
+        server_a.patch(f"/api/v1/persons/{person_id}", json={"metadata": {"class": "8-A"}})
+        match = server_b.post("/api/v1/recognize", files=_img()).json()["faces"][0]["match"]
+        assert match["metadata"] == {"class": "8-A"}  # details are read from the shared database
 
 
-def test_simultaneous_check_ins_on_two_servers_create_one_event(client):
-    _enroll(client)
-    person = client.app.state.service.db.list_persons()[0]
-    databases = [open_database(client.app.state.settings) for _ in range(4)]
-    barrier = threading.Barrier(len(databases))
-    created = []
+def test_simultaneous_enrollments_with_one_external_id_create_one_person(make_client):
+    clients = [make_client().__enter__() for _ in range(4)]
+    barrier = threading.Barrier(len(clients))
+    statuses = []
 
-    def check_in(db):
+    def enroll(index, client):
         barrier.wait()
-        ok, _ = db.mark_attendance(person, 0.9, "gate", time.time(), "2026-01-01", "t", 300)
-        created.append(ok)
+        res = client.post(
+            "/api/v1/persons",
+            data={"external_id": "STU1"},
+            files=[("images", ("f.png", face_png(Spec(index + 1)), "image/png"))],
+        )
+        statuses.append((res.status_code, res.json().get("error", {}).get("code")))
 
-    threads = [threading.Thread(target=check_in, args=(db,)) for db in databases]
+    threads = [threading.Thread(target=enroll, args=(i, c)) for i, c in enumerate(clients)]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
-    for db in databases:
-        db.close()
-    assert sorted(created) == [False, False, False, True]
-    assert len(client.get("/api/v1/attendance").json()) == 1
+    for client in clients:
+        client.__exit__(None, None, None)
+    assert sorted(statuses) == [(201, None)] + [(409, "external_id_exists")] * 3

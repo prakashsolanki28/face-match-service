@@ -26,8 +26,6 @@ _HELP = {
     "facematch_http_requests_total": ("counter", "HTTP requests by route and status."),
     "facematch_http_request_duration_seconds": ("histogram", "HTTP request latency."),
     "facematch_faces_total": ("counter", "Faces processed, by endpoint and outcome."),
-    "facematch_attendance_marked_total": ("counter", "New attendance events."),
-    "facematch_webhook_deliveries_total": ("counter", "Webhook delivery attempts by outcome."),
     "facematch_rate_limited_total": ("counter", "Requests rejected by rate limiting or overload."),
     "facematch_maintenance_runs_total": ("counter", "Backup and retention jobs by kind and outcome."),
 }

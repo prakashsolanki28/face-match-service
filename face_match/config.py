@@ -76,20 +76,13 @@ class Settings:
     min_enroll_face_size: int = 40  # px of real detail; passport thumbnails of ~100x125 px pass
     max_image_side: int = 1600  # larger images are downscaled before processing
     max_upload_mb: float = 8.0
-    # Attendance
-    attendance_cooldown_seconds: int = 300  # ignore repeat sightings inside this window
+    # Timestamps (created_at, audit log)
     timezone: str = ""  # IANA name such as "Asia/Kolkata"; empty means server local time
-    # Integration
-    webhook_url: str = ""  # POSTed to on every new attendance event
-    webhook_secret: str = ""  # signs webhook bodies (HMAC-SHA256) when set
-    webhook_max_attempts: int = 20  # exponential backoff (5 s doubling, capped at 1 h): about 10 hours
-    webhook_retry_base_seconds: float = 5.0
     # Data protection
     backup_interval_hours: float = 24.0  # automatic SQLite backups into DATA_DIR/backups; 0 disables
     backup_keep: int = 7  # newest backups to keep
-    attendance_retention_days: int = 0  # delete attendance events older than this; 0 keeps forever
     audit_retention_days: int = 0  # delete audit entries older than this; 0 keeps forever
-    # Liveness (anti-spoofing) for /attendance: "on" or "off"
+    # Liveness (anti-spoofing) on /recognize: "on" or "off". Off also skips loading the models.
     liveness: str = "on"
     liveness_threshold: float = 0.5  # minimum "real face" probability
 
@@ -136,19 +129,9 @@ class Settings:
             min_enroll_face_size=_int("MIN_ENROLL_FACE_SIZE", defaults.min_enroll_face_size),
             max_image_side=_int("MAX_IMAGE_SIDE", defaults.max_image_side),
             max_upload_mb=_float("MAX_UPLOAD_MB", defaults.max_upload_mb),
-            attendance_cooldown_seconds=_int(
-                "ATTENDANCE_COOLDOWN_SECONDS", defaults.attendance_cooldown_seconds
-            ),
             timezone=_str("TIMEZONE", ""),
-            webhook_url=_str("WEBHOOK_URL", ""),
-            webhook_secret=_str("WEBHOOK_SECRET", ""),
-            webhook_max_attempts=_int("WEBHOOK_MAX_ATTEMPTS", defaults.webhook_max_attempts),
-            webhook_retry_base_seconds=_float(
-                "WEBHOOK_RETRY_BASE_SECONDS", defaults.webhook_retry_base_seconds
-            ),
             backup_interval_hours=_float("BACKUP_INTERVAL_HOURS", defaults.backup_interval_hours),
             backup_keep=_int("BACKUP_KEEP", defaults.backup_keep),
-            attendance_retention_days=_int("ATTENDANCE_RETENTION_DAYS", defaults.attendance_retention_days),
             audit_retention_days=_int("AUDIT_RETENTION_DAYS", defaults.audit_retention_days),
             liveness=_str("LIVENESS", defaults.liveness).lower(),
             liveness_threshold=_float("LIVENESS_THRESHOLD", defaults.liveness_threshold),

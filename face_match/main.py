@@ -28,7 +28,6 @@ from .schemas import Health
 from .security import ApiKeyAuth, ImageGate, RateLimiter
 from .service import FaceService, ServiceError
 from .storage import open_database
-from .webhook import WebhookDispatcher
 
 log = logging.getLogger("face_match")
 access_log = logging.getLogger("face_match.access")
@@ -57,24 +56,7 @@ def create_app(
     db = open_database(settings)
     metrics = Metrics()
 
-    dispatcher = None
-    if settings.webhook_url:
-        dispatcher = WebhookDispatcher(
-            db,
-            settings.webhook_url,
-            settings.webhook_secret,
-            max_attempts=settings.webhook_max_attempts,
-            base_delay=settings.webhook_retry_base_seconds,
-            on_result=lambda outcome: metrics.inc("facematch_webhook_deliveries_total", outcome=outcome),
-        )
-    service = FaceService(
-        settings,
-        engine,
-        db,
-        metrics=metrics,
-        liveness=liveness,
-        on_event_queued=dispatcher.notify if dispatcher else None,
-    )
+    service = FaceService(settings, engine, db, metrics=metrics, liveness=liveness)
     auth = ApiKeyAuth(settings.api_key)
     maintenance = MaintenanceWorker(db, settings, metrics)
     # Picks up enrollments made by other servers sharing the database (cheap when idle).
@@ -93,13 +75,11 @@ def create_app(
 
     def gauges():
         current = db.stats()
-        queue = db.webhook_counts()
         return {
             f'facematch_build_info{{version="{__version__}"}}': 1,
             "facematch_enrolled_persons": current["persons"],
             "facematch_enrolled_embeddings": current["embeddings"],
             "facematch_liveness_enabled": 1 if liveness and settings.liveness == "on" else 0,
-            **{f'facematch_webhook_queue{{status="{k}"}}': v for k, v in queue.items()},
             **process_gauges(),
         }
 
@@ -107,22 +87,19 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        if dispatcher:
-            dispatcher.start()
         maintenance.start()
         gallery_sync.start()
         yield
         gallery_sync.stop()
         maintenance.stop()
-        if dispatcher:
-            dispatcher.stop()
         db.close()
 
     app = FastAPI(
         title="FaceMatch",
         version=__version__,
         description=(
-            "Self-hosted face detection, face matching and attendance API. "
+            "Self-hosted face detection and face matching API: enroll people, then identify them in "
+            "photos and camera frames. "
             "Send images as multipart/form-data. "
             "Authenticate with the `X-API-Key` header (or `Authorization: Bearer <key>`)."
         ),
@@ -141,7 +118,6 @@ def create_app(
     app.state.auth = auth
     app.state.limiter = RateLimiter(settings.rate_limit_per_minute, settings.auth_failures_per_minute)
     app.state.image_gate = ImageGate(settings.max_concurrent_images)
-    app.state.dispatcher = dispatcher
     app.state.maintenance = maintenance
 
     @app.middleware("http")

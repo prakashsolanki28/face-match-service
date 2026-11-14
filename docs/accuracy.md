@@ -59,8 +59,8 @@ person, 0.45 drops correct to 77%, which is why 0.40 is the default.
 - Enroll **3–5 photos** per person: front, slightly left, slightly right, ideally from the real camera.
 - Front lighting. A window behind the person is the most common cause of misses.
 - Faces should be **100 px or wider** in the frame. Mount the camera at face height.
-- If someone is often unknown, send one of their failing frames to `POST /api/v1/recognize`: the response's
-  `closest` shows who they were nearest to and the score (e.g. 0.33 against a 0.40 threshold). Then add a photo like
+- If someone is often unknown, send one of their failing frames to `POST /api/v1/recognize?closest=true`: the
+  response's `closest` shows who they were nearest to and the score (e.g. 0.33 against a 0.40 threshold). Then add a photo like
   the one that failed with `POST /api/v1/persons/{id}/faces`.
 
 ## Automated tests vs. accuracy

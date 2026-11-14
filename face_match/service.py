@@ -1,13 +1,14 @@
-"""Business logic: enrollment, recognition and attendance marking."""
+"""Business logic: enrollment and recognition."""
 
 from __future__ import annotations
 
-import sqlite3
+import json
+import math
 import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import cv2
@@ -18,16 +19,11 @@ from .engine import Face, FaceEngine, LivenessEngine
 from .gallery import FaceGallery
 from .observability import Metrics
 from .schemas import (
-    AttendanceEvent,
-    AttendanceFace,
-    AttendanceResult,
-    AttendanceSummary,
     Box,
     DetectedFace,
     DetectResponse,
     EnrollResponse,
     ImageSize,
-    MarkAttendanceResponse,
     Person,
     PersonMatch,
     Point,
@@ -35,7 +31,7 @@ from .schemas import (
     RecognizeResponse,
     RejectedImage,
 )
-from .storage import Database, Row
+from .storage import INTEGRITY_ERRORS, Database, Row
 
 # When a photo has several faces, the largest is used for enrollment only if
 # the next one is smaller than this fraction of it (i.e. a bystander).
@@ -43,6 +39,11 @@ _DOMINANT_FACE_RATIO = 0.5
 # Small images (e.g. passport-photo thumbnails from a school portal) where no
 # face is found are retried after upscaling to this many pixels on the long side.
 _UPSCALE_TARGET = 480
+
+# Limits for a person's own fields (metadata).
+METADATA_MAX_KEYS = 50
+METADATA_MAX_KEY_LENGTH = 64
+METADATA_MAX_TEXT_LENGTH = 1000
 
 
 class ServiceError(Exception):
@@ -62,6 +63,56 @@ class ServiceError(Exception):
         self.headers = headers
 
 
+def _invalid_metadata(message: str) -> ServiceError:
+    return ServiceError(422, "invalid_metadata", message)
+
+
+def _reject_constant(value: str) -> Any:
+    raise _invalid_metadata(f"metadata can't contain {value}.")
+
+
+def parse_metadata(text: Optional[str]) -> Dict[str, Any]:
+    """Parse the `metadata` form field: a JSON object. Empty or missing means none."""
+    if text is None or not text.strip():
+        return {}
+    try:
+        value = json.loads(text, parse_constant=_reject_constant)
+    except json.JSONDecodeError:
+        raise _invalid_metadata(
+            'metadata must be a JSON object, e.g. {"class": "7-A", "roll_no": 12}.'
+        ) from None
+    return clean_metadata(value)
+
+
+def clean_metadata(value: Any) -> Dict[str, Any]:
+    """Check a person's own fields: a flat JSON object of text, numbers, true/false or null."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise _invalid_metadata('metadata must be a JSON object, e.g. {"class": "7-A", "roll_no": 12}.')
+    if len(value) > METADATA_MAX_KEYS:
+        raise _invalid_metadata(f"metadata can have at most {METADATA_MAX_KEYS} keys.")
+    for key, item in value.items():
+        if not key.strip() or len(key) > METADATA_MAX_KEY_LENGTH:
+            raise _invalid_metadata(f"metadata keys must be 1-{METADATA_MAX_KEY_LENGTH} characters.")
+        if isinstance(item, str):
+            if len(item) > METADATA_MAX_TEXT_LENGTH:
+                raise _invalid_metadata(
+                    f"metadata['{key}'] is longer than {METADATA_MAX_TEXT_LENGTH} characters."
+                )
+        elif isinstance(item, float) and not math.isfinite(item):
+            raise _invalid_metadata(f"metadata['{key}'] must be a finite number.")
+        elif item is not None and not isinstance(item, (bool, int, float)):
+            raise _invalid_metadata(
+                f"metadata['{key}'] must be text, a number, true/false or null (no nested objects or lists)."
+            )
+    return dict(value)
+
+
+def _clean_name(name: Optional[str]) -> Optional[str]:
+    return (name or "").strip() or None
+
+
 @dataclass
 class ImageInput:
     data: bytes
@@ -71,7 +122,6 @@ class ImageInput:
 @dataclass
 class MatchResult:
     match: Optional[PersonMatch] = None
-    person: Optional[Row] = None
     closest: Optional[PersonMatch] = None  # best candidate when no match was accepted
     reason: Optional[str] = None  # why not accepted (see schemas.UnknownReason)
 
@@ -99,14 +149,12 @@ class FaceService:
         db: Database,
         metrics: Optional[Metrics] = None,
         liveness: Optional[LivenessEngine] = None,
-        on_event_queued: Optional[Callable[[], None]] = None,
     ) -> None:
         self.settings = settings
         self.engine = engine
         self.db = db
         self.metrics = metrics or Metrics()
         self.liveness = liveness
-        self._on_event_queued = on_event_queued or (lambda: None)
         self.gallery = FaceGallery(engine.embedding_size)
         # Read the change-feed position first, so nothing written during the load is missed.
         self._gallery_revision = db.gallery_revision()
@@ -121,9 +169,6 @@ class FaceService:
 
     def _iso(self, ts: float) -> str:
         return self._local(ts).isoformat(timespec="seconds")
-
-    def today(self) -> str:
-        return self._local(time.time()).date().isoformat()
 
     # ---- image helpers -------------------------------------------------------
 
@@ -219,7 +264,8 @@ class FaceService:
         candidate = PersonMatch(
             person_id=person["id"],
             external_id=person["external_id"],
-            name=person["name"],
+            name=person["name"] or None,
+            metadata=person["metadata"],
             similarity=round(best.similarity, 4),
         )
         if best.similarity < self.settings.match_threshold:
@@ -228,7 +274,7 @@ class FaceService:
         # "unknown" is recoverable (manual marking), a wrong name is not.
         if best.runner_up is not None and best.similarity - best.runner_up < self.settings.match_margin:
             return MatchResult(closest=candidate, reason="ambiguous")
-        return MatchResult(match=candidate, person=person)
+        return MatchResult(match=candidate)
 
     @staticmethod
     def _elapsed_ms(start: float) -> float:
@@ -265,160 +311,60 @@ class FaceService:
                 self._gallery_revision = max(c["id"] for c in changes)
             return len(latest)
 
-    def _count_face(self, endpoint: str, outcome: str) -> None:
-        self.metrics.inc("facematch_faces_total", endpoint=endpoint, outcome=outcome)
+    def _count_face(self, outcome: str) -> None:
+        self.metrics.inc("facematch_faces_total", endpoint="recognize", outcome=outcome)
 
-    def recognize(self, data: bytes, check_liveness: bool = False) -> RecognizeResponse:
+    def recognize(
+        self, data: bytes, check_liveness: Optional[bool] = None, include_closest: bool = False
+    ) -> RecognizeResponse:
+        """Identify every face in the image. Records nothing.
+
+        `check_liveness` (default: the LIVENESS setting) checks each recognised face for a printed
+        photo or a screen; one that fails is returned without its match (liveness_failed), so its
+        id can't be used, e.g. to mark someone present. `include_closest` adds the nearest person
+        for unknown faces (testing and tuning only).
+        """
         start = time.perf_counter()
+        if check_liveness is None:
+            check_liveness = self.settings.liveness == "on"
         size, faces = self.analyze(data)
         results = []
         for face in faces:
             if face.embedding is None:
                 results.append(RecognizedFace(**face.fields, match=None, unknown_reason="too_small"))
-                self._count_face("recognize", "too_small")
-                continue
-            found = self.match_embedding(face.embedding)
-            score = self.liveness_score(face) if check_liveness else None
-            results.append(
-                RecognizedFace(
-                    **face.fields,
-                    match=found.match,
-                    unknown_reason=found.reason,
-                    closest=found.closest,
-                    liveness_score=score,
-                )
-            )
-            self._count_face("recognize", "matched" if found.match else found.reason or "unknown")
-        return RecognizeResponse(image=size, faces=results, processing_ms=self._elapsed_ms(start))
-
-    # ---- attendance ----------------------------------------------------------
-
-    def mark_attendance(
-        self, data: bytes, device_id: Optional[str]
-    ) -> Tuple[MarkAttendanceResponse, List[AttendanceEvent]]:
-        """Recognise every face in the frame and log attendance for known people.
-
-        Returns the response plus the newly created events (for webhooks).
-        """
-        start = time.perf_counter()
-        size, faces = self.analyze(data)
-        device_id = (device_id or "").strip() or None
-        results: List[AttendanceFace] = []
-        new_events: List[AttendanceEvent] = []
-        seen_in_frame = set()
-
-        for face in faces:
-            fields = face.fields
-            if face.embedding is None:
-                results.append(
-                    AttendanceFace(
-                        **fields,
-                        match=None,
-                        unknown_reason="too_small",
-                        attendance=AttendanceResult(status="too_small"),
-                    )
-                )
-                self._count_face("attendance", "too_small")
+                self._count_face("too_small")
                 continue
 
             found = self.match_embedding(face.embedding)
-            match, person = found.match, found.person
-            if match is None or person is None:
-                # No `closest` here: a public kiosk shouldn't reveal who someone resembles.
+            if found.match is None:
                 results.append(
-                    AttendanceFace(
-                        **fields,
+                    RecognizedFace(
+                        **face.fields,
                         match=None,
                         unknown_reason=found.reason,
-                        attendance=AttendanceResult(status="unknown"),
+                        closest=found.closest if include_closest else None,
                     )
                 )
-                self._count_face("attendance", found.reason or "unknown")
+                self._count_face(found.reason or "unknown")
                 continue
 
-            # Anti-spoofing: only recognised faces can mark attendance, so only they are checked.
-            score = self.liveness_score(face) if self.settings.liveness == "on" else None
+            # Anti-spoofing: only recognised faces return an id, so only they are checked.
+            score = self.liveness_score(face) if check_liveness else None
             if score is not None and score < self.settings.liveness_threshold:
                 results.append(
-                    AttendanceFace(
-                        **fields,
+                    RecognizedFace(
+                        **face.fields,
                         match=None,  # don't confirm who a suspected spoof shows
                         unknown_reason="liveness_failed",
                         liveness_score=score,
-                        attendance=AttendanceResult(status="liveness_failed"),
                     )
                 )
-                self._count_face("attendance", "liveness_failed")
+                self._count_face("liveness_failed")
                 continue
 
-            if match.person_id in seen_in_frame:
-                outcome = AttendanceResult(status="already_marked")
-            else:
-                seen_in_frame.add(match.person_id)
-                now = time.time()
-                created, row = self.db.mark_attendance(
-                    person=person,
-                    similarity=match.similarity,
-                    device_id=device_id,
-                    ts=now,
-                    day=self._local(now).date().isoformat(),
-                    created_at=self._iso(now),
-                    cooldown_seconds=self.settings.attendance_cooldown_seconds,
-                    enqueue_webhook=bool(self.settings.webhook_url),
-                )
-                outcome = AttendanceResult(
-                    status="marked" if created else "already_marked",
-                    event_id=row["id"],
-                    timestamp=row["created_at"],
-                )
-                if created:
-                    new_events.append(self._event(row))
-                    self.metrics.inc("facematch_attendance_marked_total")
-            results.append(AttendanceFace(**fields, match=match, liveness_score=score, attendance=outcome))
-            self._count_face("attendance", outcome.status)
-
-        if new_events and self.settings.webhook_url:
-            self._on_event_queued()
-
-        response = MarkAttendanceResponse(
-            image=size,
-            device_id=device_id,
-            faces=results,
-            processing_ms=self._elapsed_ms(start),
-        )
-        return response, new_events
-
-    @staticmethod
-    def _event(row: Row) -> AttendanceEvent:
-        return AttendanceEvent(
-            id=row["id"],
-            person_id=row["person_id"],
-            external_id=row["external_id"],
-            name=row["name"],
-            similarity=row["similarity"],
-            device_id=row["device_id"],
-            timestamp=row["created_at"],
-            day=row["day"],
-        )
-
-    def list_attendance(
-        self, day: Optional[str], person_id: Optional[str], limit: int, offset: int = 0
-    ) -> List[AttendanceEvent]:
-        return [self._event(r) for r in self.db.list_attendance(day, person_id, limit, offset)]
-
-    def attendance_summary(self, day: Optional[str]) -> List[AttendanceSummary]:
-        rows = self.db.attendance_summary(day or self.today())
-        return [
-            AttendanceSummary(
-                person_id=r["person_id"],
-                external_id=r["external_id"],
-                name=r["name"],
-                first_seen=self._iso(r["first_ts"]),
-                last_seen=self._iso(r["last_ts"]),
-                events=r["events"],
-            )
-            for r in rows
-        ]
+            results.append(RecognizedFace(**face.fields, match=found.match, liveness_score=score))
+            self._count_face("matched")
+        return RecognizeResponse(image=size, faces=results, processing_ms=self._elapsed_ms(start))
 
     # ---- enrollment ----------------------------------------------------------
 
@@ -510,7 +456,22 @@ class FaceService:
         return accepted, rejected, conflicts
 
     def _person(self, row: Row) -> Person:
-        return Person(**{k: row[k] for k in ("id", "external_id", "name", "face_count", "created_at")})
+        return Person(
+            id=row["id"],
+            external_id=row["external_id"],
+            name=row["name"] or None,
+            metadata=row["metadata"],
+            face_count=row["face_count"],
+            created_at=row["created_at"],
+        )
+
+    def _external_id_taken(self, external_id: str, existing: Row) -> ServiceError:
+        return ServiceError(
+            409,
+            "external_id_exists",
+            f"external_id '{external_id}' is already enrolled.",
+            {"person": self._person(existing).model_dump()},
+        )
 
     def _raise_no_usable_face(self, rejected: List[RejectedImage], conflicts: List[str]) -> None:
         if conflicts:
@@ -530,26 +491,23 @@ class FaceService:
 
     def enroll(
         self,
-        name: str,
+        name: Optional[str],
         external_id: Optional[str],
         images: List[ImageInput],
         allow_duplicate: bool = False,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> EnrollResponse:
-        name = (name or "").strip()
-        external_id = (external_id or "").strip() or None
-        if not name:
-            raise ServiceError(422, "invalid_name", "Name must not be empty.")
+        """Enroll a new person. Only photos are required: name, external_id and metadata are optional,
+        and the returned person id is what identifies them in every later response."""
+        name = _clean_name(name)
+        external_id = _clean_name(external_id)
+        metadata = clean_metadata(metadata)
         if not images:
             raise ServiceError(422, "no_images", "Provide at least one image.")
         if external_id:
             existing = self.db.find_person_by_external_id(external_id)
             if existing:
-                raise ServiceError(
-                    409,
-                    "external_id_exists",
-                    f"external_id '{external_id}' is already enrolled.",
-                    {"person": self._person(existing).model_dump()},
-                )
+                raise self._external_id_taken(external_id, existing)
 
         accepted, rejected, conflicts = self._collect_embeddings(
             images, person_id=None, allow_duplicate=allow_duplicate
@@ -558,8 +516,8 @@ class FaceService:
             self._raise_no_usable_face(rejected, conflicts)
 
         try:
-            row = self.db.create_person(name, external_id, accepted, self._iso(time.time()))
-        except sqlite3.IntegrityError:  # concurrent enrollment with the same external_id
+            row = self.db.create_person(name, external_id, accepted, self._iso(time.time()), metadata)
+        except INTEGRITY_ERRORS:  # concurrent enrollment with the same external_id
             raise ServiceError(
                 409, "external_id_exists", f"external_id '{external_id}' is already enrolled."
             ) from None
@@ -613,14 +571,31 @@ class FaceService:
             raise ServiceError(404, "person_not_found", "Person not found.")
         return self._person(row)
 
-    def delete_person(self, person_id: str, erase_history: bool = False) -> None:
-        if not self.db.delete_person(person_id, erase_history=erase_history):
+    def update_person(self, person_id: str, changes: Dict[str, Any]) -> Person:
+        """Change some of name, external_id and metadata (metadata is replaced, not merged)."""
+        if self.db.get_person(person_id) is None:
+            raise ServiceError(404, "person_not_found", "Person not found.")
+        changes = dict(changes)
+        if "name" in changes:
+            changes["name"] = _clean_name(changes["name"])
+        if "metadata" in changes:
+            changes["metadata"] = clean_metadata(changes["metadata"])
+        if "external_id" in changes:
+            external_id = changes["external_id"] = _clean_name(changes["external_id"])
+            existing = self.db.find_person_by_external_id(external_id) if external_id else None
+            if existing and existing["id"] != person_id:
+                raise self._external_id_taken(external_id, existing)  # type: ignore[arg-type]
+        try:
+            updated = self.db.update_person(person_id, changes)
+        except INTEGRITY_ERRORS:  # concurrent change to the same external_id
+            raise ServiceError(
+                409, "external_id_exists", f"external_id '{changes['external_id']}' is already enrolled."
+            ) from None
+        if not updated:
+            raise ServiceError(404, "person_not_found", "Person not found.")
+        return self.get_person(person_id)
+
+    def delete_person(self, person_id: str) -> None:
+        if not self.db.delete_person(person_id):
             raise ServiceError(404, "person_not_found", "Person not found.")
         self.gallery.remove(person_id)
-
-    # ---- API keys & webhooks (admin) ----------------------------------------------
-
-    def retry_webhook(self, delivery_id: int) -> None:
-        if not self.db.retry_webhook(delivery_id):
-            raise ServiceError(404, "delivery_not_found", "Delivery not found or already delivered.")
-        self._on_event_queued()

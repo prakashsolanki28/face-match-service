@@ -9,9 +9,9 @@ from fakes import Spec, face_png
 from face_match.liveness import crop_for_liveness
 
 
-def _attendance(client, person=1):
-    res = client.post("/api/v1/attendance", files={"image": ("f.png", face_png(Spec(person)), "image/png")})
-    return res.json()["faces"][0]
+def _recognize(client, person=1, query=""):
+    files = {"image": ("f.png", face_png(Spec(person)), "image/png")}
+    return client.post(f"/api/v1/recognize{query}", files=files).json()["faces"][0]
 
 
 def _enroll(client):
@@ -43,46 +43,46 @@ def test_crop_scale_is_capped_for_large_faces():
 # ---- service rules ----------------------------------------------------------------------
 
 
-def test_spoofed_frame_is_not_recorded_and_name_is_withheld(client):
+def test_spoofed_face_is_returned_without_its_match(client):
     _enroll(client)
     client.app.state.service.liveness.value = 0.1
-    face = _attendance(client)
-    assert face["attendance"]["status"] == "liveness_failed"
+    face = _recognize(client, query="?closest=true")
     assert face["unknown_reason"] == "liveness_failed" and face["match"] is None
+    assert face["closest"] is None  # don't confirm who a suspected spoof shows
     assert face["liveness_score"] == pytest.approx(0.1)
-    assert client.get("/api/v1/attendance").json() == []
 
 
-def test_live_frame_is_recorded_with_its_score(client):
+def test_live_face_is_matched_with_its_score(client):
     _enroll(client)
-    face = _attendance(client)
-    assert face["attendance"]["status"] == "marked" and face["liveness_score"] == pytest.approx(0.99)
+    face = _recognize(client)
+    assert face["match"]["name"] == "Asha" and face["liveness_score"] == pytest.approx(0.99)
 
 
 def test_unknown_faces_are_not_liveness_checked(client):
     _enroll(client)
     client.app.state.service.liveness.value = 0.1
-    face = _attendance(client, person=2)
-    assert face["attendance"]["status"] == "unknown" and face["liveness_score"] is None
+    face = _recognize(client, person=2)
+    assert face["unknown_reason"] == "below_threshold" and face["liveness_score"] is None
 
 
 def test_threshold_is_configurable(make_client):
     with make_client(liveness_threshold=0.995) as client:
         _enroll(client)
-        assert _attendance(client)["attendance"]["status"] == "liveness_failed"
+        assert _recognize(client)["unknown_reason"] == "liveness_failed"
 
 
-def test_recognize_returns_score_on_request(client):
+def test_check_can_be_skipped_per_request(client):
+    """For uploaded photos, which aren't re-captured from a camera."""
     _enroll(client)
-    files = {"image": ("f.png", face_png(Spec(1)), "image/png")}
-    plain = client.post("/api/v1/recognize", files=files).json()["faces"][0]
-    scored = client.post("/api/v1/recognize?liveness=true", files=files).json()["faces"][0]
-    assert plain["liveness_score"] is None and scored["liveness_score"] == pytest.approx(0.99)
+    client.app.state.service.liveness.value = 0.1
+    face = _recognize(client, query="?liveness=false")
+    assert face["match"]["name"] == "Asha" and face["liveness_score"] is None
 
 
 def test_liveness_off_skips_the_check(make_client):
     with make_client(liveness="off") as client:
         assert client.get("/health").json()["liveness"] is False
         _enroll(client)
-        face = _attendance(client)
-        assert face["attendance"]["status"] == "marked" and face["liveness_score"] is None
+        for query in ("", "?liveness=true"):
+            face = _recognize(client, query=query)
+            assert face["match"]["name"] == "Asha" and face["liveness_score"] is None

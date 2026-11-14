@@ -50,8 +50,8 @@ curl https://face.example.com/api/v1/auth/check -H "Authorization: Bearer $API_K
 {"authenticated": true, "auth_required": true}
 ```
 
-The same key works for every endpoint: enrolling people, recognising faces, marking attendance, reading
-attendance, webhooks, the audit log and `/metrics`.
+The same key works for every endpoint: enrolling and updating people, detecting and recognising faces, the audit
+log and `/metrics`.
 
 ### Postman
 
@@ -115,5 +115,5 @@ The key opens everything, including enrolling and deleting people. Treat it like
 - **Brute force:** repeated wrong keys from one IP get `429`. Behind a reverse proxy, set `FORWARDED_ALLOW_IPS` so
   this applies to the real client IP.
 - **Rate limits are per client IP**, so one busy kiosk can't use up the limit for the others.
-- **Audit trail:** every change made through the API (enrollments, photo changes, deletions, webhook retries) is
+- **Audit trail:** every change made through the API (enrollments, updates, photo changes, deletions) is
   recorded with the actor `api_key`, the client IP and the request id. View it with `GET /api/v1/audit`.

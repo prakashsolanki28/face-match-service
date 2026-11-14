@@ -28,10 +28,9 @@ from pathlib import Path
 from typing import List, Optional, Sequence
 
 
-def _body(image: bytes, device_id: str) -> tuple:
+def _body(image: bytes) -> tuple:
     boundary = uuid.uuid4().hex
     parts = [
-        f'--{boundary}\r\nContent-Disposition: form-data; name="device_id"\r\n\r\n{device_id}\r\n'.encode(),
         f'--{boundary}\r\nContent-Disposition: form-data; name="image"; filename="frame.jpg"\r\n'
         "Content-Type: image/jpeg\r\n\r\n".encode()
         + image
@@ -42,7 +41,7 @@ def _body(image: bytes, device_id: str) -> tuple:
 
 
 def run(url: str, api_key: str, image: bytes, concurrency: int, duration: float, endpoint: str) -> dict:
-    body, content_type = _body(image, "loadtest")
+    body, content_type = _body(image)
     target = f"{url.rstrip('/')}/api/v1/{endpoint}"
     latencies: List[float] = []
     statuses: Counter = Counter()
@@ -102,7 +101,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--image", type=Path, required=True, help="A JPEG frame to send (ideally one face).")
     parser.add_argument("--url", default=os.environ.get("FACE_SERVICE_URL", "http://127.0.0.1:8000"))
     parser.add_argument("--api-key", default=os.environ.get("FACE_API_KEY") or os.environ.get("API_KEY", ""))
-    parser.add_argument("--endpoint", choices=["recognize", "attendance", "detect"], default="recognize")
+    parser.add_argument("--endpoint", choices=["recognize", "detect"], default="recognize")
     parser.add_argument("--concurrency", default="1,4,8", help="Comma-separated client counts to try.")
     parser.add_argument("--duration", type=float, default=15.0, help="Seconds per concurrency level.")
     args = parser.parse_args(argv)

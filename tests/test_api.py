@@ -2,12 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
-import threading
-import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from fakes import Spec, blank_png, face_png
 
@@ -93,7 +88,9 @@ def test_unknown_faces_explain_why(client):
     _enroll(client, face_png(Spec(1)))
     stranger = _first(client, "/api/v1/recognize", face_png(Spec(2)))
     assert stranger["match"] is None and stranger["unknown_reason"] == "below_threshold"
-    assert stranger["closest"]["name"] == "Asha" and stranger["closest"]["similarity"] < 0.4
+    assert stranger["closest"] is None  # opt-in: callers must never act on a near-miss
+    tuning = _first(client, "/api/v1/recognize?closest=true", face_png(Spec(2)))
+    assert tuning["closest"]["name"] == "Asha" and tuning["closest"]["similarity"] < 0.4
     small = _first(client, "/api/v1/recognize", face_png(Spec(1, size=24)))
     assert small["match"] is None and small["unknown_reason"] == "too_small"
 
@@ -104,10 +101,8 @@ def test_twins_are_too_close_to_call(client):
     assert blocked.status_code == 409 and blocked.json()["error"]["code"] == "already_enrolled"
     twin = _enroll(client, face_png(Spec(105)), name="Twin B", external_id="T-2", allow_duplicate="true")
     assert twin.status_code == 201
-    face = _first(client, "/api/v1/attendance", face_png(Spec(5, variant=1)))
+    face = _first(client, "/api/v1/recognize", face_png(Spec(5, variant=1)))
     assert face["match"] is None and face["unknown_reason"] == "ambiguous"
-    assert face["attendance"]["status"] == "unknown"
-    assert client.get("/api/v1/attendance").json() == []
 
 
 def test_lookup_by_external_id_and_pagination(client):
@@ -178,47 +173,122 @@ def test_add_and_replace_photos(client):
     assert good.status_code == 200 and good.json()["person"]["face_count"] == 1
 
 
-# ---- attendance --------------------------------------------------------------------------
+# ---- photo-only enrollment and metadata ---------------------------------------------------
 
 
-def test_attendance_with_cooldown_and_summary(client):
+def test_enroll_with_a_photo_only_returns_an_id(client):
+    res = client.post("/api/v1/persons", files=_files(face_png(Spec(1))))
+    assert res.status_code == 201
+    person = res.json()["person"]
+    assert len(person["id"]) == 32
+    assert person["name"] is None and person["external_id"] is None and person["metadata"] == {}
+
+    face = _first(client, "/api/v1/recognize", face_png(Spec(1, variant=2)))
+    assert face["match"]["person_id"] == person["id"] and face["match"]["name"] is None
+
+    # A blank name is the same as none; named people are listed first.
+    _enroll(client, face_png(Spec(2)), name="  ", external_id="E-2")
+    _enroll(client, face_png(Spec(3)), name="Zoe", external_id="E-3")
+    assert [p["name"] for p in client.get("/api/v1/persons").json()] == ["Zoe", None, None]
+
+
+def test_metadata_is_stored_and_returned_with_matches(client):
+    fields = {"class": "7-A", "roll_no": 12, "bus": True, "note": None, "fee_paid": 99.5, "नाम": "आशा"}
+    res = _enroll(client, face_png(Spec(1)), metadata=json.dumps(fields))
+    assert res.status_code == 201
+    person = res.json()["person"]
+    assert person["metadata"] == fields
+    assert client.get(f"/api/v1/persons/{person['id']}").json()["metadata"] == fields
+    assert client.get("/api/v1/persons").json()[0]["metadata"] == fields
+    assert _first(client, "/api/v1/recognize", face_png(Spec(1, variant=1)))["match"]["metadata"] == fields
+    stranger = _first(client, "/api/v1/recognize?closest=true", face_png(Spec(2)))
+    assert stranger["closest"]["metadata"] == fields
+
+    empty = _enroll(client, face_png(Spec(3)), external_id="E-3", metadata="  ")
+    assert empty.status_code == 201 and empty.json()["person"]["metadata"] == {}
+
+
+def test_invalid_metadata_is_rejected_before_enrolling(client):
+    bad = [
+        "not json",
+        '["a", "list"]',
+        '{"class": {"nested": 1}}',
+        '{"subjects": ["maths"]}',
+        '{"score": NaN}',
+        json.dumps({f"k{i}": i for i in range(51)}),
+        json.dumps({"k" * 65: 1}),
+        json.dumps({" ": 1}),
+        json.dumps({"note": "x" * 1001}),
+    ]
+    for text in bad:
+        res = _enroll(client, face_png(Spec(1)), metadata=text)
+        assert res.status_code == 422 and res.json()["error"]["code"] == "invalid_metadata", text
+    assert client.get("/api/v1/persons").json() == []
+
+
+def test_update_person(client):
+    person = _enroll(client, face_png(Spec(1)), metadata='{"class": "7-A", "bus": true}').json()["person"]
+    url = f"/api/v1/persons/{person['id']}"
+
+    updated = client.patch(url, json={"metadata": {"class": "8-A"}})
+    assert updated.status_code == 200
+    assert updated.json()["metadata"] == {"class": "8-A"}  # replaced, not merged
+    assert updated.json()["name"] == "Asha" and updated.json()["external_id"] == "EMP-1"  # unchanged
+    assert _first(client, "/api/v1/recognize", face_png(Spec(1)))["match"]["metadata"] == {"class": "8-A"}
+
+    cleared = client.patch(url, json={"name": None, "external_id": None, "metadata": None}).json()
+    assert cleared["name"] is None and cleared["external_id"] is None and cleared["metadata"] == {}
+    renamed = client.patch(url, json={"name": " Asha Verma ", "external_id": "STU0001"}).json()
+    assert renamed["name"] == "Asha Verma" and renamed["external_id"] == "STU0001"
+    assert client.patch(url, json={"external_id": "STU0001"}).status_code == 200  # its own ID
+    assert client.patch(url, json={}).json() == renamed
+
+    _enroll(client, face_png(Spec(2)), external_id="STU0002")
+    taken = client.patch(url, json={"external_id": "STU0002"})
+    assert taken.status_code == 409 and taken.json()["error"]["code"] == "external_id_exists"
+    nested = client.patch(url, json={"metadata": {"a": {"b": 1}}})
+    assert nested.status_code == 422 and nested.json()["error"]["code"] == "invalid_metadata"
+    unknown = client.patch(url, json={"metadta": {}})
+    assert unknown.status_code == 422 and unknown.json()["error"]["code"] == "validation_error"
+    for body in ({"name": "X"}, {"external_id": "STU0002"}):
+        missing = client.patch("/api/v1/persons/nope", json=body)
+        assert missing.status_code == 404 and missing.json()["error"]["code"] == "person_not_found"
+    assert client.get(url).json() == renamed
+
+
+# ---- matching a camera frame -------------------------------------------------------------
+
+
+def test_a_frame_returns_the_ids_of_everyone_recognised(client):
+    """The caller (e.g. a school portal) acts on match.person_id, e.g. to mark people present."""
+    asha = _enroll(client, face_png(Spec(1)), external_id="STU1").json()["person"]["id"]
+    ravi = _enroll(client, face_png(Spec(2)), name="Ravi", external_id="STU2").json()["person"]["id"]
+    frame = face_png(Spec(1, size=150, variant=1), Spec(2, size=120, variant=2), Spec(3, size=100))
+    faces = _post(client, "/api/v1/recognize", frame).json()["faces"]
+    assert [f["match"]["person_id"] if f["match"] else None for f in faces] == [asha, ravi, None]
+    assert [f["match"]["external_id"] for f in faces[:2]] == ["STU1", "STU2"]
+    assert faces[2]["unknown_reason"] == "below_threshold" and faces[2]["closest"] is None
+
+
+def test_recognition_records_nothing_and_attendance_is_gone(client):
+    _enroll(client, face_png(Spec(1)))
+    for _ in range(2):
+        assert _first(client, "/api/v1/recognize", face_png(Spec(1)))["match"]["name"] == "Asha"
+    for method, path in [
+        ("post", "/api/v1/attendance"),
+        ("get", "/api/v1/attendance"),
+        ("get", "/api/v1/attendance/summary"),
+        ("get", "/api/v1/webhooks"),
+    ]:
+        assert getattr(client, method)(path).status_code in (404, 405), path
+
+
+def test_delete_removes_the_person(client):
     person_id = _enroll(client, face_png(Spec(1))).json()["person"]["id"]
-    first = _post(client, "/api/v1/attendance", face_png(Spec(1, variant=1)), device_id="gate-1").json()
-    face = first["faces"][0]
-    assert face["attendance"]["status"] == "marked" and first["device_id"] == "gate-1"
-    again = _first(client, "/api/v1/attendance", face_png(Spec(1)))
-    assert again["attendance"]["status"] == "already_marked"
-    assert again["attendance"]["event_id"] == face["attendance"]["event_id"]
-    stranger = _first(client, "/api/v1/attendance", face_png(Spec(2)))
-    assert stranger["attendance"]["status"] == "unknown" and stranger["closest"] is None  # no hints at kiosks
-    small = _first(client, "/api/v1/attendance", face_png(Spec(1, size=20)))
-    assert small["attendance"]["status"] == "too_small"
-
-    events = client.get("/api/v1/attendance").json()
-    assert len(events) == 1 and events[0]["person_id"] == person_id
-    summary = client.get("/api/v1/attendance/summary").json()
-    assert summary[0]["name"] == "Asha" and summary[0]["events"] == 1
-
-
-def test_zero_cooldown_logs_every_sighting(make_client):
-    with make_client(attendance_cooldown_seconds=0) as client:
-        _enroll(client, face_png(Spec(1)))
-        for _ in range(2):
-            assert _first(client, "/api/v1/attendance", face_png(Spec(1)))["attendance"]["status"] == "marked"
-
-
-def test_delete_keeps_history_unless_erased(client):
-    person_id = _enroll(client, face_png(Spec(1))).json()["person"]["id"]
-    _post(client, "/api/v1/attendance", face_png(Spec(1)))
     assert client.delete(f"/api/v1/persons/{person_id}").status_code == 204
     assert client.get(f"/api/v1/persons/{person_id}").status_code == 404
-    assert _first(client, "/api/v1/recognize", face_png(Spec(1)))["match"] is None
-    assert len(client.get("/api/v1/attendance").json()) == 1
-
-    other = _enroll(client, face_png(Spec(2)), external_id="EMP-2").json()["person"]["id"]
-    _post(client, "/api/v1/attendance", face_png(Spec(2)))
-    assert client.delete(f"/api/v1/persons/{other}?erase_history=true").status_code == 204
-    assert [e["person_id"] for e in client.get("/api/v1/attendance").json()] == [person_id]
+    assert _first(client, "/api/v1/recognize", face_png(Spec(1)))["unknown_reason"] == "nobody_enrolled"
+    assert client.delete(f"/api/v1/persons/{person_id}").status_code == 404
 
 
 def test_data_persists_across_restarts(make_client):
@@ -226,36 +296,3 @@ def test_data_persists_across_restarts(make_client):
         _enroll(client, face_png(Spec(1)))
     with make_client() as client:
         assert _first(client, "/api/v1/recognize", face_png(Spec(1)))["match"]["name"] == "Asha"
-
-
-def test_webhook_delivers_signed_event(make_client):
-    received = []
-
-    class Receiver(BaseHTTPRequestHandler):
-        def do_POST(self):
-            body = self.rfile.read(int(self.headers["Content-Length"]))
-            received.append((self.headers.get("X-Signature-256"), body))
-            self.send_response(204)
-            self.end_headers()
-
-        def log_message(self, *args):
-            pass
-
-    server = HTTPServer(("127.0.0.1", 0), Receiver)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    try:
-        url = f"http://127.0.0.1:{server.server_port}/hook"
-        with make_client(webhook_url=url, webhook_secret="shh") as client:
-            _enroll(client, face_png(Spec(1)))
-            _post(client, "/api/v1/attendance", face_png(Spec(1)))
-            deadline = time.time() + 10
-            while not received and time.time() < deadline:
-                time.sleep(0.05)
-    finally:
-        server.shutdown()
-
-    signature, body = received[0]
-    assert hmac.compare_digest(signature, "sha256=" + hmac.new(b"shh", body, hashlib.sha256).hexdigest())
-    payload = json.loads(body)
-    assert payload["event"] == "attendance.marked" and len(payload["id"]) == 32
-    assert payload["data"]["name"] == "Asha" and payload["data"]["external_id"] == "EMP-1"

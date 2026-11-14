@@ -23,7 +23,8 @@ FaceMatch stores biometric data (face embeddings). Treat a deployment like any s
 - Serve it over **HTTPS**, behind a reverse proxy (Caddy, nginx, Traefik). Browsers only allow the camera on
   HTTPS or localhost anyway.
 - Restrict `CORS_ORIGINS` to your own front-end origins.
-- Set `WEBHOOK_SECRET` and verify `X-Signature-256` on the receiving side.
+- Only act on `match` from `/recognize` (never on `closest`, which is off unless you ask for it), and keep
+  liveness on for camera frames.
 - Protect `DATA_DIR`: the database and automatic backups are owner-only files; use disk encryption and copy
   backups off-site, encrypted.
 - **Liveness is a deterrent, not a guarantee.** It rejects photos and screens held up to the camera, but not

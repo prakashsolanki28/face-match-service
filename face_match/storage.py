@@ -1,4 +1,4 @@
-"""Persistence for people, embeddings, attendance, audit log and webhooks.
+"""Persistence for people, embeddings and the audit log.
 
 Two backends share one implementation:
   * SQLite (default): a single file in DATA_DIR, ideal for one server.
@@ -22,14 +22,17 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tupl
 
 import numpy as np
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _TABLES = """
+-- name is '' when none was given (the API returns null). metadata is a JSON object of the
+-- caller's own fields, or NULL.
 CREATE TABLE IF NOT EXISTS persons (
     id          TEXT PRIMARY KEY,
     external_id TEXT UNIQUE,
     name        TEXT NOT NULL,
-    created_at  TEXT NOT NULL
+    created_at  TEXT NOT NULL,
+    metadata    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS face_embeddings (
@@ -40,37 +43,8 @@ CREATE TABLE IF NOT EXISTS face_embeddings (
 );
 CREATE INDEX IF NOT EXISTS idx_embeddings_person ON face_embeddings(person_id);
 
--- Person details are copied onto each event so history survives deleting a person.
-CREATE TABLE IF NOT EXISTS attendance (
-    id          {serial},
-    person_id   TEXT NOT NULL,
-    external_id TEXT,
-    name        TEXT NOT NULL,
-    similarity  {real} NOT NULL,
-    device_id   TEXT,
-    ts          {real} NOT NULL,
-    day         TEXT NOT NULL,
-    created_at  TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_attendance_day ON attendance(day);
-CREATE INDEX IF NOT EXISTS idx_attendance_person_ts ON attendance(person_id, ts);
-
--- Transactional outbox: webhook events are stored with the attendance event and
--- delivered (with retries) by a background worker.
-CREATE TABLE IF NOT EXISTS webhook_outbox (
-    id              {serial},
-    event_id        TEXT NOT NULL UNIQUE,
-    event           TEXT NOT NULL,
-    person_id       TEXT,
-    payload         TEXT NOT NULL,
-    status          TEXT NOT NULL DEFAULT 'pending',
-    attempts        INTEGER NOT NULL DEFAULT 0,
-    next_attempt_at {real} NOT NULL,
-    last_error      TEXT,
-    created_at      {real} NOT NULL,
-    delivered_at    {real}
-);
-CREATE INDEX IF NOT EXISTS idx_outbox_due ON webhook_outbox(status, next_attempt_at);
+-- Attendance and its webhook outbox were removed in 3.0: attendance is kept by the caller's own
+-- system. Tables left by older versions are not dropped automatically, so no history is lost.
 
 -- Who changed what, and when.
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -104,6 +78,14 @@ _POSTGRES_TYPES = {"serial": "BIGSERIAL PRIMARY KEY", "blob": "BYTEA", "real": "
 
 Row = Dict[str, Any]
 
+# Unique-constraint violations (a concurrent write took the same external_id), for both backends.
+try:  # pragma: no cover - depends on the optional extra
+    import psycopg as _psycopg
+
+    INTEGRITY_ERRORS: Tuple[type, ...] = (sqlite3.IntegrityError, _psycopg.IntegrityError)
+except ImportError:
+    INTEGRITY_ERRORS = (sqlite3.IntegrityError,)
+
 
 def is_postgres_url(target: Union[str, Path]) -> bool:
     return isinstance(target, str) and target.startswith(("postgres://", "postgresql://"))
@@ -134,6 +116,9 @@ class Database:
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.execute("PRAGMA busy_timeout=5000")
             self._conn.executescript(_TABLES.format(**_SQLITE_TYPES))
+            columns = {r["name"] for r in self._conn.execute("PRAGMA table_info(persons)")}
+            if "metadata" not in columns:  # databases created before schema 5
+                self._conn.execute("ALTER TABLE persons ADD COLUMN metadata TEXT")
             self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         # Biometric data: owner-only. SQLite gives the -wal/-shm files the same mode.
         with contextlib.suppress(OSError):
@@ -156,6 +141,8 @@ class Database:
                 code = [line for line in statement.splitlines() if not line.strip().startswith("--")]
                 if "".join(code).strip():  # skip chunks that are only comments/whitespace
                     self._conn.execute(statement)
+            # Databases created before schema 5.
+            self._conn.execute("ALTER TABLE persons ADD COLUMN IF NOT EXISTS metadata TEXT")
 
     def _sql(self, sql: str) -> str:
         return sql.replace("?", "%s") if self.dialect == "postgres" else sql
@@ -205,13 +192,18 @@ class Database:
         )
 
     def create_person(
-        self, name: str, external_id: Optional[str], embeddings: Iterable[np.ndarray], created_at: str
+        self,
+        name: Optional[str],
+        external_id: Optional[str],
+        embeddings: Iterable[np.ndarray],
+        created_at: str,
+        metadata: Optional[Row] = None,
     ) -> Row:
         person_id = uuid.uuid4().hex
         with self._tx():
             self._execute(
-                "INSERT INTO persons (id, external_id, name, created_at) VALUES (?, ?, ?, ?)",
-                (person_id, external_id, name, created_at),
+                "INSERT INTO persons (id, external_id, name, created_at, metadata) VALUES (?, ?, ?, ?, ?)",
+                (person_id, external_id, name or "", created_at, _metadata_json(metadata)),
             )
             self._insert_embeddings(person_id, embeddings, created_at)
             self._log_gallery(person_id, "upsert")
@@ -237,37 +229,60 @@ class Database:
             )
 
     _PERSON_SELECT = """
-        SELECT p.id, p.external_id, p.name, p.created_at, COUNT(e.id) AS face_count
+        SELECT p.id, p.external_id, p.name, p.created_at, p.metadata, COUNT(e.id) AS face_count
         FROM persons p LEFT JOIN face_embeddings e ON e.person_id = p.id
     """
 
+    @staticmethod
+    def _person_row(row: Optional[Row]) -> Optional[Row]:
+        """Decode the metadata JSON (an empty dict when there is none)."""
+        if row is not None:
+            row["metadata"] = json.loads(row["metadata"]) if row["metadata"] else {}
+        return row
+
     def get_person(self, person_id: str) -> Optional[Row]:
-        return self._one(self._PERSON_SELECT + " WHERE p.id = ? GROUP BY p.id", (person_id,))
+        return self._person_row(
+            self._one(self._PERSON_SELECT + " WHERE p.id = ? GROUP BY p.id", (person_id,))
+        )
 
     def find_person_by_external_id(self, external_id: str) -> Optional[Row]:
-        return self._one(self._PERSON_SELECT + " WHERE p.external_id = ? GROUP BY p.id", (external_id,))
+        return self._person_row(
+            self._one(self._PERSON_SELECT + " WHERE p.external_id = ? GROUP BY p.id", (external_id,))
+        )
 
     def list_persons(self, limit: Optional[int] = None, offset: int = 0) -> List[Row]:
-        sql = self._PERSON_SELECT + " GROUP BY p.id ORDER BY lower(p.name), p.id"
+        # By name; people enrolled without a name come last, oldest first.
+        sql = self._PERSON_SELECT + " GROUP BY p.id ORDER BY p.name = '', lower(p.name), p.created_at, p.id"
         params: List[Any] = []
         if limit is not None:
             sql += " LIMIT ? OFFSET ?"
             params += [limit, offset]
-        return self._all(sql, params)
+        return [self._person_row(r) for r in self._all(sql, params)]  # type: ignore[misc]
+
+    def update_person(self, person_id: str, changes: Row) -> bool:
+        """Set some of name, external_id and metadata. Returns False if the person doesn't exist."""
+        values = dict(changes)
+        if "name" in values:
+            values["name"] = values["name"] or ""
+        if "metadata" in values:
+            values["metadata"] = _metadata_json(values["metadata"])
+        columns = [c for c in ("name", "external_id", "metadata") if c in values]
+        if not columns:
+            return self.get_person(person_id) is not None
+        assignments = ", ".join(f"{c} = ?" for c in columns)  # fixed column names, never user input
+        params = (*[values[c] for c in columns], person_id)
+        with self._tx():
+            return self._execute(f"UPDATE persons SET {assignments} WHERE id = ?", params).rowcount > 0
 
     def count_persons(self) -> int:
         return int(self._value("SELECT COUNT(*) AS n FROM persons") or 0)
 
-    def delete_person(self, person_id: str, erase_history: bool = False) -> bool:
-        """Delete a person and their embeddings. With erase_history, also delete their
-        attendance events and queued webhooks (right to erasure)."""
+    def delete_person(self, person_id: str) -> bool:
+        """Delete a person and their embeddings."""
         with self._tx():
             deleted = self._execute("DELETE FROM persons WHERE id = ?", (person_id,)).rowcount
             if deleted:
                 self._log_gallery(person_id, "delete")
-            if erase_history:
-                self._execute("DELETE FROM attendance WHERE person_id = ?", (person_id,))
-                self._execute("DELETE FROM webhook_outbox WHERE person_id = ?", (person_id,))
         return deleted > 0
 
     def all_embeddings(self) -> List[Tuple[str, np.ndarray]]:
@@ -297,88 +312,6 @@ class Database:
             "persons": int(self._value("SELECT COUNT(*) AS n FROM persons") or 0),
             "embeddings": int(self._value("SELECT COUNT(*) AS n FROM face_embeddings") or 0),
         }
-
-    # ---- attendance ----------------------------------------------------------
-
-    def mark_attendance(
-        self,
-        person: Row,
-        similarity: float,
-        device_id: Optional[str],
-        ts: float,
-        day: str,
-        created_at: str,
-        cooldown_seconds: int,
-        enqueue_webhook: bool = False,
-    ) -> Tuple[bool, Row]:
-        """Insert an event unless the person was seen within the cooldown window.
-
-        Returns (created, event). When not created, `event` is the most recent one.
-        The check and insert are atomic, also across servers (PostgreSQL takes a per-person
-        advisory lock), so concurrent frames can't create duplicates. With enqueue_webhook,
-        the webhook is queued in the same transaction, so no event is ever lost.
-        """
-        with self._tx():
-            if self.dialect == "postgres":
-                self._execute("SELECT pg_advisory_xact_lock(hashtext(?))", (person["id"],))
-            last = self._execute(
-                "SELECT * FROM attendance WHERE person_id = ? ORDER BY ts DESC LIMIT 1", (person["id"],)
-            ).fetchone()
-            if last is not None and ts - last["ts"] < cooldown_seconds:
-                return False, dict(last)
-            event = dict(
-                self._execute(
-                    """INSERT INTO attendance
-                       (person_id, external_id, name, similarity, device_id, ts, day, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *""",
-                    (
-                        person["id"],
-                        person["external_id"],
-                        person["name"],
-                        similarity,
-                        device_id,
-                        ts,
-                        day,
-                        created_at,
-                    ),
-                ).fetchall()[0]  # read RETURNING fully before COMMIT
-            )
-            if enqueue_webhook:
-                self._enqueue("attendance.marked", event["person_id"], attendance_payload(event))
-        return True, event
-
-    def list_attendance(
-        self, day: Optional[str], person_id: Optional[str], limit: int, offset: int = 0
-    ) -> List[Row]:
-        clauses, params = [], []  # type: List[str], List[Any]
-        if day:
-            clauses.append("day = ?")
-            params.append(day)
-        if person_id:
-            clauses.append("person_id = ?")
-            params.append(person_id)
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        return self._all(
-            f"SELECT * FROM attendance {where} ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?",
-            (*params, limit, offset),
-        )
-
-    def attendance_summary(self, day: str) -> List[Row]:
-        return self._all(
-            """SELECT person_id,
-                      MAX(external_id) AS external_id,
-                      MAX(name)        AS name,
-                      MIN(ts)          AS first_ts,
-                      MAX(ts)          AS last_ts,
-                      COUNT(*)         AS events
-               FROM attendance WHERE day = ?
-               GROUP BY person_id ORDER BY first_ts""",
-            (day,),
-        )
-
-    def purge_attendance_before(self, ts: float) -> int:
-        with self._tx():
-            return self._execute("DELETE FROM attendance WHERE ts < ?", (ts,)).rowcount
 
     # ---- audit log -------------------------------------------------------------------
 
@@ -434,93 +367,6 @@ class Database:
         with self._tx():
             return self._execute("DELETE FROM audit_log WHERE ts < ?", (ts,)).rowcount
 
-    # ---- webhook outbox ----------------------------------------------------------
-
-    def _enqueue(self, event: str, person_id: Optional[str], payload: Row) -> None:
-        now = time.time()
-        self._execute(
-            """INSERT INTO webhook_outbox (event_id, event, person_id, payload, next_attempt_at, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (uuid.uuid4().hex, event, person_id, json.dumps(payload), now, now),
-        )
-
-    def claim_due_webhooks(self, now: float, lease_seconds: float = 60.0, limit: int = 20) -> List[Row]:
-        """Claim due deliveries by pushing their next attempt `lease_seconds` ahead.
-
-        Another server (or worker) won't pick them up meanwhile; on PostgreSQL rows locked by a
-        concurrent claim are skipped. The returned rows keep their original values.
-        """
-        lock = " FOR UPDATE SKIP LOCKED" if self.dialect == "postgres" else ""
-        with self._tx():
-            rows = [
-                dict(r)
-                for r in self._execute(
-                    "SELECT * FROM webhook_outbox WHERE status = 'pending' AND next_attempt_at <= ?"
-                    f" ORDER BY id LIMIT ?{lock}",
-                    (now, limit),
-                ).fetchall()
-            ]
-            for row in rows:
-                self._execute(
-                    "UPDATE webhook_outbox SET next_attempt_at = ? WHERE id = ?",
-                    (now + lease_seconds, row["id"]),
-                )
-        return rows
-
-    def webhook_delivered(self, row_id: int, attempts: int, ts: float) -> None:
-        with self._tx():
-            self._execute(
-                "UPDATE webhook_outbox SET status='delivered', attempts=?, delivered_at=?, last_error=NULL"
-                " WHERE id=?",
-                (attempts, ts, row_id),
-            )
-
-    def webhook_attempt_failed(
-        self, row_id: int, attempts: int, error: str, next_at: Optional[float]
-    ) -> None:
-        """Record a failed attempt; next_at=None gives up (status 'failed')."""
-        with self._tx():
-            if next_at is None:
-                self._execute(
-                    "UPDATE webhook_outbox SET status='failed', attempts=?, last_error=? WHERE id=?",
-                    (attempts, error[:500], row_id),
-                )
-            else:
-                self._execute(
-                    "UPDATE webhook_outbox SET attempts=?, last_error=?, next_attempt_at=? WHERE id=?",
-                    (attempts, error[:500], next_at, row_id),
-                )
-
-    def list_webhooks(self, status: Optional[str], limit: int, offset: int = 0) -> List[Row]:
-        where, params = ("WHERE status = ?", [status]) if status else ("", [])
-        return self._all(
-            f"SELECT * FROM webhook_outbox {where} ORDER BY id DESC LIMIT ? OFFSET ?",
-            (*params, limit, offset),
-        )
-
-    def retry_webhook(self, row_id: int) -> bool:
-        with self._tx():
-            return (
-                self._execute(
-                    "UPDATE webhook_outbox SET status='pending', next_attempt_at=?"
-                    " WHERE id=? AND status != 'delivered'",
-                    (time.time(), row_id),
-                ).rowcount
-                > 0
-            )
-
-    def webhook_counts(self) -> Dict[str, int]:
-        rows = self._all("SELECT status, COUNT(*) AS n FROM webhook_outbox GROUP BY status")
-        counts = {"pending": 0, "delivered": 0, "failed": 0}
-        counts.update({r["status"]: int(r["n"]) for r in rows})
-        return counts
-
-    def purge_webhooks_before(self, ts: float) -> int:
-        with self._tx():
-            return self._execute(
-                "DELETE FROM webhook_outbox WHERE status != 'pending' AND created_at < ?", (ts,)
-            ).rowcount
-
     # ---- backups -------------------------------------------------------------------
 
     def backup_to(self, target: Path) -> Path:
@@ -547,15 +393,5 @@ def open_database(settings) -> Database:
     return Database(settings.database_url or settings.db_path)
 
 
-def attendance_payload(row: Row) -> Row:
-    """Public JSON shape of an attendance event (API responses and webhooks)."""
-    return {
-        "id": row["id"],
-        "person_id": row["person_id"],
-        "external_id": row["external_id"],
-        "name": row["name"],
-        "similarity": row["similarity"],
-        "device_id": row["device_id"],
-        "timestamp": row["created_at"],
-        "day": row["day"],
-    }
+def _metadata_json(metadata: Optional[Row]) -> Optional[str]:
+    return json.dumps(metadata, ensure_ascii=False, separators=(",", ":")) if metadata else None

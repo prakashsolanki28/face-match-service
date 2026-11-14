@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "FaceMatch",
-    "description": "Self-hosted face detection, face matching and attendance API. Send images as multipart/form-data. Authenticate with the `X-API-Key` header (or `Authorization: Bearer <key>`).",
+    "description": "Self-hosted face detection and face matching API: enroll people, then identify them in photos and camera frames. Send images as multipart/form-data. Authenticate with the `X-API-Key` header (or `Authorization: Bearer <key>`).",
     "contact": {
       "name": "FaceMatch on GitHub",
       "url": "https://github.com/prakashsolanki28/face-match-service"
@@ -210,7 +210,7 @@
           "faces"
         ],
         "summary": "Recognize faces",
-        "description": "Find faces and identify enrolled people. Does not record anything.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
+        "description": "Find faces and identify enrolled people. Does not record anything.\n\nEach recognised face has `match.person_id` (and your `external_id`): use these to act on the\nresult, for example to mark people present in your own system.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "recognize_faces",
         "security": [
           {
@@ -226,12 +226,30 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "boolean",
-              "description": "Also return liveness_score for each face.",
-              "default": false,
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Check recognised faces for a printed photo or a screen held up to the camera; one that fails is returned without its match (unknown_reason liveness_failed). Defaults to the server's LIVENESS setting. Use false for uploaded photos, which aren't re-captured.",
               "title": "Liveness"
             },
-            "description": "Also return liveness_score for each face."
+            "description": "Check recognised faces for a printed photo or a screen held up to the camera; one that fails is returned without its match (unknown_reason liveness_failed). Defaults to the server's LIVENESS setting. Use false for uploaded photos, which aren't re-captured."
+          },
+          {
+            "name": "closest",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "For testing and tuning: also return the nearest enrolled person for unknown faces.",
+              "default": false,
+              "title": "Closest"
+            },
+            "description": "For testing and tuning: also return the nearest enrolled person for unknown faces."
           }
         ],
         "requestBody": {
@@ -324,7 +342,7 @@
           "persons"
         ],
         "summary": "Enroll a person",
-        "description": "Enroll a person. 3-5 photos (slightly different angles/lighting) give the best accuracy.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
+        "description": "Enroll a person. Only photos are required: the response's `person.id` is returned as\n`person_id` in every match, so store it in your system. 3-5 photos (slightly different\nangles/lighting) give the best accuracy.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "enroll_person",
         "security": [
           {
@@ -678,12 +696,143 @@
           }
         }
       },
+      "patch": {
+        "tags": [
+          "persons"
+        ],
+        "summary": "Update a person",
+        "description": "Change a person's name, external_id or metadata. Only the fields you send change;\n`metadata` replaces all of the person's own fields. Photos are changed with /faces.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
+        "operationId": "update_person",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The person's id, returned when they were enrolled.",
+              "title": "Person Id"
+            },
+            "description": "The person's id, returned when they were enrolled."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Person"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        }
+      },
       "delete": {
         "tags": [
           "persons"
         ],
         "summary": "Delete a person",
-        "description": "Delete a person and their face data. Attendance history is kept unless erase_history=true.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
+        "description": "Delete a person and all their face data.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "delete_person",
         "security": [
           {
@@ -704,18 +853,6 @@
               "title": "Person Id"
             },
             "description": "The person's id, returned when they were enrolled."
-          },
-          {
-            "name": "erase_history",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "description": "Also delete the person's attendance events and queued webhooks (right to erasure).",
-              "default": false,
-              "title": "Erase History"
-            },
-            "description": "Also delete the person's attendance events and queued webhooks (right to erasure)."
           }
         ],
         "responses": {
@@ -1059,632 +1196,6 @@
         }
       }
     },
-    "/api/v1/attendance": {
-      "post": {
-        "tags": [
-          "attendance"
-        ],
-        "summary": "Mark attendance",
-        "description": "Recognise everyone in the frame and record attendance.\n\nRepeat sightings within ATTENDANCE_COOLDOWN_SECONDS return `already_marked`. With liveness on,\na face that looks like a photo or screen returns `liveness_failed` and is not recorded.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
-        "operationId": "mark_attendance",
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_mark_attendance"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MarkAttendanceResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Request Entity Too Large"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        }
-      },
-      "get": {
-        "tags": [
-          "attendance"
-        ],
-        "summary": "List attendance events",
-        "description": "Raw attendance events, newest first.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
-        "operationId": "list_attendance",
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "date",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "date"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "YYYY-MM-DD; omit for all days.",
-              "examples": [
-                "2026-01-15"
-              ],
-              "title": "Date"
-            },
-            "description": "YYYY-MM-DD; omit for all days."
-          },
-          {
-            "name": "person_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Only this person's events.",
-              "title": "Person Id"
-            },
-            "description": "Only this person's events."
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 5000,
-              "minimum": 1,
-              "description": "Page size.",
-              "default": 200,
-              "title": "Limit"
-            },
-            "description": "Page size."
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Skip this many results (for paging).",
-              "default": 0,
-              "title": "Offset"
-            },
-            "description": "Skip this many results (for paging)."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/AttendanceEvent"
-                  },
-                  "title": "Response List Attendance"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Request Entity Too Large"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        }
-      }
-    },
-    "/api/v1/attendance/summary": {
-      "get": {
-        "tags": [
-          "attendance"
-        ],
-        "summary": "Daily attendance summary",
-        "description": "One row per person for the day: first seen (check-in), last seen (check-out).\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
-        "operationId": "attendance_summary",
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "date",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "date"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "YYYY-MM-DD; defaults to today.",
-              "examples": [
-                "2026-01-15"
-              ],
-              "title": "Date"
-            },
-            "description": "YYYY-MM-DD; defaults to today."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/AttendanceSummary"
-                  },
-                  "title": "Response Attendance Summary"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Request Entity Too Large"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        }
-      }
-    },
-    "/api/v1/webhooks": {
-      "get": {
-        "tags": [
-          "admin"
-        ],
-        "summary": "List webhook deliveries",
-        "description": "Webhook delivery queue, newest first. Failed deliveries can be retried.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
-        "operationId": "list_webhooks",
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "enum": [
-                    "pending",
-                    "delivered",
-                    "failed"
-                  ],
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Only this status: pending, delivered or failed.",
-              "title": "Status"
-            },
-            "description": "Only this status: pending, delivered or failed."
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 1000,
-              "minimum": 1,
-              "description": "Page size.",
-              "default": 100,
-              "title": "Limit"
-            },
-            "description": "Page size."
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Skip this many results (for paging).",
-              "default": 0,
-              "title": "Offset"
-            },
-            "description": "Skip this many results (for paging)."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/WebhookDelivery"
-                  },
-                  "title": "Response List Webhooks"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Request Entity Too Large"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        }
-      }
-    },
-    "/api/v1/webhooks/{delivery_id}/retry": {
-      "post": {
-        "tags": [
-          "admin"
-        ],
-        "summary": "Retry a webhook delivery",
-        "description": "Send a failed webhook delivery again.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
-        "operationId": "retry_webhook",
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "delivery_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "description": "The delivery's id, from GET /webhooks.",
-              "title": "Delivery Id"
-            },
-            "description": "The delivery's id, from GET /webhooks."
-          }
-        ],
-        "responses": {
-          "202": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Request Entity Too Large"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        }
-      }
-    },
     "/api/v1/auth/check": {
       "get": {
         "tags": [
@@ -1781,7 +1292,7 @@
           "admin"
         ],
         "summary": "Audit log",
-        "description": "Who changed what: enrollments, photo changes, deletions, keys, webhook retries. Newest first.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
+        "description": "Who changed what: enrollments, updates, photo changes and deletions. Newest first.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "list_audit",
         "security": [
           {
@@ -1832,10 +1343,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Filter, e.g. person.* or key.revoke",
+              "description": "Filter, e.g. person.* or person.update",
               "title": "Action"
             },
-            "description": "Filter, e.g. person.* or key.revoke"
+            "description": "Filter, e.g. person.* or person.update"
           },
           {
             "name": "actor",
@@ -1937,242 +1448,6 @@
   },
   "components": {
     "schemas": {
-      "AttendanceEvent": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "person_id": {
-            "type": "string",
-            "title": "Person Id"
-          },
-          "external_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "External Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "similarity": {
-            "type": "number",
-            "title": "Similarity"
-          },
-          "device_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Device Id"
-          },
-          "timestamp": {
-            "type": "string",
-            "title": "Timestamp"
-          },
-          "day": {
-            "type": "string",
-            "title": "Day"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "person_id",
-          "external_id",
-          "name",
-          "similarity",
-          "device_id",
-          "timestamp",
-          "day"
-        ],
-        "title": "AttendanceEvent"
-      },
-      "AttendanceFace": {
-        "properties": {
-          "box": {
-            "$ref": "#/components/schemas/Box",
-            "description": "Bounding box in original image pixels."
-          },
-          "score": {
-            "type": "number",
-            "title": "Score",
-            "description": "Detector confidence, 0-1."
-          },
-          "landmarks": {
-            "items": {
-              "$ref": "#/components/schemas/Point"
-            },
-            "type": "array",
-            "title": "Landmarks",
-            "description": "Right eye, left eye, nose tip, right mouth corner, left mouth corner."
-          },
-          "match": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PersonMatch"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Null when the face is unknown."
-          },
-          "unknown_reason": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "too_small",
-                  "below_threshold",
-                  "ambiguous",
-                  "nobody_enrolled",
-                  "liveness_failed"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Unknown Reason",
-            "description": "Why match is null: face too small, closest person below MATCH_THRESHOLD, two people too close to call (MATCH_MARGIN), or nobody enrolled."
-          },
-          "closest": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PersonMatch"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "/recognize only, for testing and tuning: the nearest enrolled person when match is null. Never returned by /attendance, so kiosks don't reveal near-misses."
-          },
-          "liveness_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Liveness Score",
-            "description": "Probability that the face is live (not a photo or screen). Set on /attendance when liveness is on, and on /recognize with ?liveness=true."
-          },
-          "attendance": {
-            "$ref": "#/components/schemas/AttendanceResult"
-          }
-        },
-        "type": "object",
-        "required": [
-          "box",
-          "score",
-          "landmarks",
-          "match",
-          "attendance"
-        ],
-        "title": "AttendanceFace"
-      },
-      "AttendanceResult": {
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "marked",
-              "already_marked",
-              "unknown",
-              "too_small",
-              "liveness_failed"
-            ],
-            "title": "Status"
-          },
-          "event_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Event Id"
-          },
-          "timestamp": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Timestamp",
-            "description": "New event time, or the earlier event when already_marked."
-          }
-        },
-        "type": "object",
-        "required": [
-          "status"
-        ],
-        "title": "AttendanceResult"
-      },
-      "AttendanceSummary": {
-        "properties": {
-          "person_id": {
-            "type": "string",
-            "title": "Person Id"
-          },
-          "external_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "External Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "first_seen": {
-            "type": "string",
-            "title": "First Seen"
-          },
-          "last_seen": {
-            "type": "string",
-            "title": "Last Seen"
-          },
-          "events": {
-            "type": "integer",
-            "title": "Events"
-          }
-        },
-        "type": "object",
-        "required": [
-          "person_id",
-          "external_id",
-          "name",
-          "first_seen",
-          "last_seen",
-          "events"
-        ],
-        "title": "AttendanceSummary"
-      },
       "AuditEntry": {
         "properties": {
           "id": {
@@ -2324,11 +1599,28 @@
       },
       "Body_enroll_person": {
         "properties": {
+          "images": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream",
+              "format": "binary"
+            },
+            "type": "array",
+            "title": "Images",
+            "description": "1-10 clear, front-facing photos."
+          },
           "name": {
-            "type": "string",
-            "maxLength": 200,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Name",
-            "description": "Full name.",
+            "description": "Full name. Optional.",
             "examples": [
               "Asha Verma"
             ]
@@ -2344,20 +1636,25 @@
               }
             ],
             "title": "External Id",
-            "description": "Your system's ID for this person, e.g. employee code.",
+            "description": "Your system's ID for this person, e.g. admission number. Optional.",
             "examples": [
-              "EMP-001"
+              "STU0001"
             ]
           },
-          "images": {
-            "items": {
-              "type": "string",
-              "contentMediaType": "application/octet-stream",
-              "format": "binary"
-            },
-            "type": "array",
-            "title": "Images",
-            "description": "1-10 clear, front-facing photos."
+          "metadata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata",
+            "description": "Optional. Your own fields for this person, as a JSON object of text, numbers, true/false or null (no nested objects or lists). Up to 50 keys of at most 64 characters; text values up to 1000 characters. Returned with the person and with every match, including to kiosks, so don't store secrets here. Send it as JSON text in this form field.",
+            "examples": [
+              "{\"class\": \"7-A\", \"section\": \"B\", \"roll_no\": 12}"
+            ]
           },
           "allow_duplicate": {
             "type": "boolean",
@@ -2368,42 +1665,9 @@
         },
         "type": "object",
         "required": [
-          "name",
           "images"
         ],
         "title": "Body_enroll_person"
-      },
-      "Body_mark_attendance": {
-        "properties": {
-          "image": {
-            "type": "string",
-            "contentMediaType": "application/octet-stream",
-            "title": "Image",
-            "description": "A photo: JPEG, PNG, WebP or BMP.",
-            "format": "binary"
-          },
-          "device_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 100
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Device Id",
-            "description": "Camera/kiosk identifier.",
-            "examples": [
-              "gate-1"
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "image"
-        ],
-        "title": "Body_mark_attendance"
       },
       "Body_recognize_faces": {
         "properties": {
@@ -2663,48 +1927,12 @@
         ],
         "title": "ImageSize"
       },
-      "MarkAttendanceResponse": {
-        "properties": {
-          "image": {
-            "$ref": "#/components/schemas/ImageSize"
-          },
-          "device_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Device Id"
-          },
-          "faces": {
-            "items": {
-              "$ref": "#/components/schemas/AttendanceFace"
-            },
-            "type": "array",
-            "title": "Faces"
-          },
-          "processing_ms": {
-            "type": "number",
-            "title": "Processing Ms"
-          }
-        },
-        "type": "object",
-        "required": [
-          "image",
-          "device_id",
-          "faces",
-          "processing_ms"
-        ],
-        "title": "MarkAttendanceResponse"
-      },
       "Person": {
         "properties": {
           "id": {
             "type": "string",
-            "title": "Id"
+            "title": "Id",
+            "description": "FaceMatch's id for this person. Store it in your system: every match carries it as person_id."
           },
           "external_id": {
             "anyOf": [
@@ -2715,11 +1943,51 @@
                 "type": "null"
               }
             ],
-            "title": "External Id"
+            "title": "External Id",
+            "description": "Your system's ID, if you sent one."
           },
           "name": {
-            "type": "string",
-            "title": "Name"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Null when enrolled without a name."
+          },
+          "metadata": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Metadata",
+            "description": "Your own fields for this person, as a JSON object of text, numbers, true/false or null (no nested objects or lists). Up to 50 keys of at most 64 characters; text values up to 1000 characters. Returned with the person and with every match, including to kiosks, so don't store secrets here.",
+            "examples": [
+              {
+                "class": "7-A",
+                "roll_no": 12,
+                "section": "B"
+              }
+            ]
           },
           "face_count": {
             "type": "integer",
@@ -2744,7 +2012,8 @@
         "properties": {
           "person_id": {
             "type": "string",
-            "title": "Person Id"
+            "title": "Person Id",
+            "description": "The id returned when the person was enrolled."
           },
           "external_id": {
             "anyOf": [
@@ -2758,8 +2027,40 @@
             "title": "External Id"
           },
           "name": {
-            "type": "string",
-            "title": "Name"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Null when the person was enrolled without a name."
+          },
+          "metadata": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Metadata",
+            "description": "The person's own fields (see Person.metadata)."
           },
           "similarity": {
             "type": "number",
@@ -2775,6 +2076,66 @@
           "similarity"
         ],
         "title": "PersonMatch"
+      },
+      "PersonUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "New name, or null to remove it.",
+            "examples": [
+              "Asha Verma"
+            ]
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id",
+            "description": "New ID from your system, or null to remove it.",
+            "examples": [
+              "STU0001"
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata",
+            "description": "Replaces all of the person's own fields (it is not merged). Send {} or null to remove them. Up to 50 keys of at most 64 characters; text values up to 1000 characters. Returned with the person and with every match, including to kiosks, so don't store secrets here.",
+            "examples": [
+              {
+                "class": "8-A",
+                "roll_no": 12,
+                "section": "B"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PersonUpdate",
+        "description": "Only the fields you send are changed."
       },
       "Point": {
         "properties": {
@@ -2866,7 +2227,7 @@
               }
             ],
             "title": "Unknown Reason",
-            "description": "Why match is null: face too small, closest person below MATCH_THRESHOLD, two people too close to call (MATCH_MARGIN), or nobody enrolled."
+            "description": "Why match is null: face too small, closest person below MATCH_THRESHOLD, two people too close to call (MATCH_MARGIN), nobody enrolled, or the face looks like a photo or screen (liveness_failed)."
           },
           "closest": {
             "anyOf": [
@@ -2877,7 +2238,7 @@
                 "type": "null"
               }
             ],
-            "description": "/recognize only, for testing and tuning: the nearest enrolled person when match is null. Never returned by /attendance, so kiosks don't reveal near-misses."
+            "description": "Only with ?closest=true, for testing and tuning: the nearest enrolled person when match is null. Never set for liveness_failed. Never treat it as a match."
           },
           "liveness_score": {
             "anyOf": [
@@ -2889,7 +2250,7 @@
               }
             ],
             "title": "Liveness Score",
-            "description": "Probability that the face is live (not a photo or screen). Set on /attendance when liveness is on, and on /recognize with ?liveness=true."
+            "description": "Probability that the face is live (not a printed photo or a screen), for recognised faces when the liveness check runs. Null for unknown faces."
           }
         },
         "type": "object",
@@ -2939,78 +2300,6 @@
           "reason"
         ],
         "title": "RejectedImage"
-      },
-      "WebhookDelivery": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "event_id": {
-            "type": "string",
-            "title": "Event Id"
-          },
-          "event": {
-            "type": "string",
-            "title": "Event"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "delivered",
-              "failed"
-            ],
-            "title": "Status"
-          },
-          "attempts": {
-            "type": "integer",
-            "title": "Attempts"
-          },
-          "last_error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Error"
-          },
-          "created_at": {
-            "type": "number",
-            "title": "Created At"
-          },
-          "delivered_at": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Delivered At"
-          },
-          "next_attempt_at": {
-            "type": "number",
-            "title": "Next Attempt At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "event_id",
-          "event",
-          "status",
-          "attempts",
-          "last_error",
-          "created_at",
-          "delivered_at",
-          "next_attempt_at"
-        ],
-        "title": "WebhookDelivery"
       }
     },
     "securitySchemes": {
@@ -3045,12 +2334,8 @@
       "description": "Enroll, update and remove people and their photos."
     },
     {
-      "name": "attendance",
-      "description": "Mark attendance from camera frames and read it back."
-    },
-    {
       "name": "admin",
-      "description": "Webhook deliveries and the audit log."
+      "description": "The audit log."
     }
   ]
 }

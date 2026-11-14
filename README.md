@@ -6,15 +6,16 @@
 
 **A lightweight, self-hosted face detection and face matching service.** Enroll people, then send any photo or
 camera frame and get back *who is in it*, over a simple REST API that any portal, app or backend can call.
-Built-in attendance logging, bulk import and signed webhooks cover the common "who arrived today?" use case.
+It does one job: your portal keeps everything else (attendance, access control, records) and acts on the ids that
+FaceMatch returns.
 
 - **Light:** about 110 MB of RAM idle (about 250 MB under load), about 25 ms per frame on CPU, 43 MB of models. No GPU,
   no compiler, and no database server required (SQLite by default, PostgreSQL for several servers).
 - **Safe by design:** it refuses to guess between look-alikes, tells you *why* a face is unknown, rejects photos
   and screens held up to the camera (liveness), and stores embeddings rather than photos.
 - **API only:** no built-in UI. Your portal, kiosks and apps integrate over REST with one API key.
-- **Production features:** an audit log, rate limiting, webhooks that retry until delivered,
-  Prometheus metrics, JSON logs, backups, retention, right to erasure, and several servers sharing PostgreSQL.
+- **Production features:** an audit log, rate limiting, overload protection, Prometheus metrics, JSON logs,
+  backups, retention, deletion on request, and several servers sharing PostgreSQL.
 - **Commercially usable:** Apache-2.0 code, with permissively licensed models (YuNet: MIT, SFace: Apache-2.0).
 - **Measured:** 97.9% correct with 5 photos per person and **no wrong names** on a 31-person, 2,500-photo
   evaluation. See [docs/accuracy.md](docs/accuracy.md).
@@ -48,9 +49,11 @@ face-match serve            # downloads the models on first run → http://127.0
 ## Use it from your app
 
 ```bash
-# 1. Enroll a person (3–5 photos give the best accuracy; one passport photo also works)
+# 1. Enroll a person (3–5 photos give the best accuracy; one passport photo also works).
+#    Only the photos are required; name, external_id and metadata (your own fields) are optional.
 curl -X POST localhost:8000/api/v1/persons -H "X-API-Key: $API_KEY" \
-  -F name="Asha Verma" -F external_id="EMP-1024" -F images=@front.jpg -F images=@left.jpg
+  -F name="Asha Verma" -F external_id="EMP-1024" -F 'metadata={"department": "Sales"}' \
+  -F images=@front.jpg -F images=@left.jpg
 
 # 2. Who is in this photo?
 curl -X POST localhost:8000/api/v1/recognize -H "X-API-Key: $API_KEY" -F image=@frame.jpg
@@ -60,7 +63,7 @@ curl -X POST localhost:8000/api/v1/recognize -H "X-API-Key: $API_KEY" -F image=@
 {
   "faces": [{
     "box": { "x": 512, "y": 180, "width": 210, "height": 262 },
-    "match": { "external_id": "EMP-1024", "name": "Asha Verma", "similarity": 0.71 },
+    "match": { "person_id": "9f1c…", "external_id": "EMP-1024", "name": "Asha Verma", "similarity": 0.71 },
     "unknown_reason": null
   }],
   "processing_ms": 9.3
@@ -68,7 +71,11 @@ curl -X POST localhost:8000/api/v1/recognize -H "X-API-Key: $API_KEY" -F image=@
 ```
 
 `external_id` is *your* ID for the person, such as an employee code or student number, so results map straight
-back to your records.
+back to your records. Or enroll with photos only and store the returned `person.id` in your system: then FaceMatch
+needs no name or other personal data at all.
+
+**Building attendance?** Send each camera frame to `/recognize` and mark the returned `person_id`s present in your
+own portal, once per person per day. See [docs/integration.md](docs/integration.md#4-mark-attendance-in-your-portal).
 
 **Prefer Postman or another API client?** Import the ready-made collection or the OpenAPI spec from
 [api/](api/README.md): every endpoint is set up with example values, file fields and your API key.
@@ -79,15 +86,15 @@ back to your records.
 |---|---|
 | **Detection** | Boxes and 5 landmarks for every face (`/detect`) |
 | **Matching** | 1:N identification against everyone enrolled (`/recognize`), with a reason for every unknown face |
-| **Enrollment** | Create, add or replace photos. Quality checks reject photos with no face, several faces, a face too small, inconsistent photos or duplicates |
-| **Attendance** | `/attendance` logs check-ins, with liveness (anti-spoofing), a cooldown, daily present/absent summary and webhooks that retry until delivered |
+| **Enrollment** | Photos only, or with a name, your own ID and your own fields (`metadata`). Create, update, add or replace photos. Quality checks reject photos with no face, several faces, a face too small, inconsistent photos or duplicates |
+| **Liveness** | Recognised faces are checked for photos and screens held up to the camera (anti-spoofing); a spoof gets `liveness_failed` instead of a match |
 | **Security** | One API key for the whole API, audit log, rate limiting per client IP, overload protection, secure defaults |
-| **Kiosks** | Any camera app can be a kiosk: send frames to `/api/v1/attendance` with the API key (sample client in the docs) |
-| **Scale** | One server handles about 25–35 kiosks; add servers behind a load balancer with PostgreSQL (`DATABASE_URL`) |
-| **Operations** | Prometheus `/metrics`, JSON logs with request ids, automatic backups, retention, `face-match pilot-report` for go-live validation |
+| **Kiosks** | Any camera app can be a kiosk: send frames to `/api/v1/recognize` with the API key and pass the matched ids to your portal (sample client in the docs) |
+| **Scale** | One server handles about 25–35 kiosks or cameras; add servers behind a load balancer with PostgreSQL (`DATABASE_URL`) |
+| **Operations** | Prometheus `/metrics`, JSON logs with request ids, automatic backups, audit-log retention, `face-match loadtest` |
 | **Bulk import** | `face-match import` enrolls hundreds of people from a CSV roster and photo folder, with a report |
 | **Evaluation** | `face-match evaluate` measures accuracy on your own photos before you go live |
-| **Integration** | REST + OpenAPI, API-key auth, CORS, HMAC-signed webhooks, stable error codes |
+| **Integration** | REST + OpenAPI, API-key auth, CORS, stable error codes, your own ID and fields on every match |
 
 ## Documentation
 
@@ -95,8 +102,8 @@ back to your records.
 - [API files to import](api/README.md): Postman collection and OpenAPI spec for Postman, Insomnia, Bruno, Swagger and code generators
 - [Configuration](docs/configuration.md): every environment variable
 - [Deployment](docs/deployment.md): Docker, HTTPS, resources, backups
-- [Integrating with a portal](docs/integration.md): IDs, webhooks, bulk import, keeping photos up to date
-- [Attendance guide](docs/attendance.md): schools and offices with hundreds of people
+- [Integrating with a portal](docs/integration.md): IDs, keeping people in sync, bulk import, marking attendance in your portal
+- [Schools and offices](docs/schools.md): enrolling hundreds of people
 - [Pilot guide](docs/pilot.md): validate on your own people before go-live
 - [The API key](docs/api-keys.md): create it, use it (curl, Postman), change it, keep it safe
 - [Kiosks and audit log](docs/keys-and-audit.md): building a kiosk client, audit log
@@ -107,8 +114,8 @@ back to your records.
 
 ```
 image ─▶ YuNet (detect + landmarks) ─▶ align ─▶ SFace (128-d embedding) ─▶ cosine match vs. enrolled
-                                                                            threshold + margin ─▶ name | unknown
-                          /attendance only: MiniFASNet liveness ─▶ live? record : liveness_failed
+                                                                            threshold + margin ─▶ id | unknown
+                     recognised faces: MiniFASNet liveness ─▶ live? match : liveness_failed
 ```
 
 Detection and recognition models come from the [OpenCV Model Zoo](https://github.com/opencv/opencv_zoo); the

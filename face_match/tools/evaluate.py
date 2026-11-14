@@ -193,7 +193,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         truth = None if identity in strangers else identity
         items += [(probe_photos[identity][k], truth) for k in keys]
 
-    base = dataclasses.replace(Settings.from_env(), webhook_url="")
+    base = Settings.from_env()
     models = ensure_models(base.models_dir, download=base.auto_download_models)
     engine = OpenCVFaceEngine(
         models["detector"], models["recognizer"], score_threshold=base.detection_threshold

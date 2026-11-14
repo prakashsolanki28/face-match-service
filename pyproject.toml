@@ -5,13 +5,13 @@ build-backend = "hatchling.build"
 [project]
 name = "face-match-service"
 dynamic = ["version"]
-description = "Lightweight, self-hosted face detection and face matching service with a REST API, enrollment, and built-in attendance."
+description = "Lightweight, self-hosted face detection and face matching service with a REST API and enrollment."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.11"
 authors = [{ name = "Prakash Solanki" }]
-keywords = ["face recognition", "face detection", "face matching", "attendance", "rest api", "opencv", "self-hosted"]
+keywords = ["face recognition", "face detection", "face matching", "liveness", "rest api", "opencv", "self-hosted"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Framework :: FastAPI",

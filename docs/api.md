@@ -1,6 +1,10 @@
 # API reference
 
-FaceMatch is API-only. The OpenAPI 3.1 specification is always at `/openapi.json` (generate clients from it).
+FaceMatch is a face detection and face matching service, and it is API-only. You enroll people and get an id for
+each; then you send photos or camera frames and get back the ids of the people in them. What you do with a match,
+such as marking attendance, happens in your own system (see [integration.md](integration.md)).
+
+The OpenAPI 3.1 specification is always at `/openapi.json` (generate clients from it).
 Interactive documentation pages (`/docs`, `/redoc`) are off by default; enable them with `API_DOCS=true`.
 
 **Import the API into your tool:** the [api/](../api/README.md) folder has a ready-to-send Postman collection
@@ -32,18 +36,14 @@ header. Every response has an `X-Request-ID` header (pass your own to correlate 
 |---|---|---|
 | `GET` | `/health` | Status, version, engine, number of people and embeddings, thresholds, whether auth is required |
 | `POST` | `/api/v1/detect` | Faces, boxes and 5 landmarks. No identity lookup |
-| `POST` | `/api/v1/recognize?liveness=` | Identify every face. Records nothing. `liveness=true` adds a `liveness_score` |
-| `POST` | `/api/v1/persons` | Enroll: `name`, optional `external_id`, 1–10 `images`, optional `allow_duplicate` |
-| `GET` | `/api/v1/persons?external_id=&limit=&offset=` | List people (sorted by name, total in `X-Total-Count`). `?external_id=` looks one up by your ID |
+| `POST` | `/api/v1/recognize?liveness=&closest=` | Identify every face and return who they are. Records nothing |
+| `POST` | `/api/v1/persons` | Enroll: 1–10 `images`, plus optional `name`, `external_id`, `metadata` and `allow_duplicate` |
+| `GET` | `/api/v1/persons?external_id=&limit=&offset=` | List people (sorted by name, people without a name last; total in `X-Total-Count`). `?external_id=` looks one up by your ID |
 | `GET` | `/api/v1/persons/{id}` | One person |
+| `PATCH` | `/api/v1/persons/{id}` | Change `name`, `external_id` or `metadata` (JSON body). Only the fields you send change |
 | `POST` | `/api/v1/persons/{id}/faces` | Add photos (they must match the person's existing photos) |
 | `PUT` | `/api/v1/persons/{id}/faces` | Replace all photos. All-or-nothing: if no new photo is usable, nothing changes |
-| `DELETE` | `/api/v1/persons/{id}?erase_history=` | Delete a person and their face data. Attendance history is kept unless `erase_history=true` (right to erasure) |
-| `POST` | `/api/v1/attendance` | Identify faces **and** log attendance: `image`, optional `device_id` |
-| `GET` | `/api/v1/attendance?date=YYYY-MM-DD&person_id=&limit=` | Attendance events, newest first |
-| `GET` | `/api/v1/attendance/summary?date=YYYY-MM-DD` | One row per person: first seen, last seen, sightings |
-| `GET` | `/api/v1/webhooks?status=pending\|delivered\|failed` | Webhook delivery queue |
-| `POST` | `/api/v1/webhooks/{id}/retry` | Retry a failed delivery |
+| `DELETE` | `/api/v1/persons/{id}` | Delete a person and their face data. Nothing else is kept about them |
 | `GET` | `/metrics` | Prometheus metrics |
 | `GET` | `/api/v1/auth/check` | Check that your API key works |
 | `GET` | `/api/v1/audit?action=&actor=&limit=&offset=` | Audit log, newest first |
@@ -63,9 +63,11 @@ curl -X POST localhost:8000/api/v1/recognize -H "X-API-Key: $API_KEY" -F image=@
       "score": 0.93,
       "landmarks": [{ "x": 570.2, "y": 280.1 }, { "x": 668.9, "y": 279.4 }, { "x": 620.5, "y": 335.0 },
                     { "x": 581.7, "y": 389.6 }, { "x": 660.3, "y": 388.8 }],
-      "match": { "person_id": "9f1c…", "external_id": "EMP-1024", "name": "Asha Verma", "similarity": 0.71 },
+      "match": { "person_id": "9f1c…", "external_id": "EMP-1024", "name": "Asha Verma",
+                 "metadata": { "class": "7-A" }, "similarity": 0.71 },
       "unknown_reason": null,
-      "closest": null
+      "closest": null,
+      "liveness_score": 0.98
     }
   ],
   "processing_ms": 9.3
@@ -73,6 +75,13 @@ curl -X POST localhost:8000/api/v1/recognize -H "X-API-Key: $API_KEY" -F image=@
 ```
 
 Faces are ordered largest first. `landmarks` are: right eye, left eye, nose tip, right mouth corner, left mouth corner.
+`match.person_id` is the id returned at enrollment: use it to look the person up in your own records. If two faces
+in one image match the same person, both are returned with that `person_id`, so de-duplicate on your side.
+
+| Query parameter | Default | Meaning |
+|---|---|---|
+| `liveness` | The server's `LIVENESS` setting (on) | Check that each recognised face is live (see [Liveness](#liveness)). `false` skips the check |
+| `closest` | `false` | `true` adds `closest` for unknown faces, for testing and tuning |
 
 ### Unknown faces
 
@@ -84,25 +93,62 @@ When `match` is `null`, `unknown_reason` explains why:
 | `ambiguous` | Two enrolled people scored almost the same (`MATCH_MARGIN`) | Look-alikes or twins. Add more photos of both |
 | `too_small` | Face narrower than `MIN_FACE_SIZE` real pixels | Move closer or use a larger photo |
 | `nobody_enrolled` | The gallery is empty | Enroll someone |
+| `liveness_failed` | Recognised, but the face looks like a printed photo or a screen | Someone held up a photo or phone. The match isn't returned |
 
-`/recognize` also returns `closest` (the nearest person and their similarity) for unknown faces, to help testing
-and tuning. **`/attendance` never returns `closest`**, so a public kiosk can't reveal who a stranger resembles.
+With `?closest=true`, unknown faces also get `closest`: the nearest person and their similarity, to help testing and
+tuning. It is off by default so that a kiosk can't learn who a stranger resembles. **Never treat `closest` as a
+match** (for example, never mark someone present from it). It is never set for `liveness_failed` faces.
+
+### Liveness
+
+Liveness (anti-spoofing) catches a face **re-captured from a print or a screen** held up to the camera. When it is
+on, every recognised face is checked. A face that fails gets `match: null`, `unknown_reason: "liveness_failed"` and
+its `liveness_score`, so the person's id isn't returned. Faces that aren't recognised aren't checked and have
+`liveness_score: null`.
+
+- It is on by default (`LIVENESS=on`, threshold `LIVENESS_THRESHOLD`). With `LIVENESS=off` on the server there is
+  no check and `liveness_score` is always `null`.
+- Use `?liveness=false` for photos that were not taken by a live camera, such as tagging uploaded photos.
+- It can't detect a digital photo sent straight to the API, so frames must come from a camera you control.
+  See [privacy.md](privacy.md#liveness-detection-anti-spoofing).
 
 ## Enroll
 
+Only the photos are required. The simplest call sends one photo and nothing else:
+
 ```bash
-curl -X POST localhost:8000/api/v1/persons -H "X-API-Key: $API_KEY" \
-  -F name="Asha Verma" -F external_id="EMP-1024" \
-  -F images=@front.jpg -F images=@left.jpg -F images=@right.jpg
+curl -X POST localhost:8000/api/v1/persons -H "X-API-Key: $API_KEY" -F images=@front.jpg
 ```
 
 ```json
 {
-  "person": { "id": "9f1c…", "external_id": "EMP-1024", "name": "Asha Verma", "face_count": 3, "created_at": "2026-11-14T09:22:17+05:30" },
-  "accepted": 3,
+  "person": { "id": "9f1c2a7e4b0d4e6f8a1b3c5d7e9f0a2b", "external_id": null, "name": null, "metadata": {},
+              "face_count": 1, "created_at": "2026-11-14T09:22:17+05:30" },
+  "accepted": 1,
   "rejected": []
 }
 ```
+
+**Store `person.id` in your system** (for example in a `face_id` column next to the student). Every match carries
+it as `person_id`, so it is all you need to link a face back to your records, and FaceMatch doesn't have to hold any
+other personal data.
+
+All the optional fields together:
+
+```bash
+curl -X POST localhost:8000/api/v1/persons -H "X-API-Key: $API_KEY" \
+  -F name="Asha Verma" -F external_id="STU0001" \
+  -F 'metadata={"class": "7-A", "section": "B", "roll_no": 12}' \
+  -F images=@front.jpg -F images=@left.jpg -F images=@right.jpg
+```
+
+| Field | Required | Meaning |
+|---|---|---|
+| `images` | Yes, 1–10 | Clear photos with one face each. 3–5 photos give the best accuracy |
+| `name` | No | Full name. `null` in responses when not sent |
+| `external_id` | No | Your own ID (admission number, employee code). Must be unique |
+| `metadata` | No | Your own fields, as JSON text (see below) |
+| `allow_duplicate` | No | `true` to enroll a face that resembles someone already enrolled (twins) |
 
 Every photo is checked. Photos that fail appear in `rejected` with a reason; the person is created if at least one
 photo passes.
@@ -116,24 +162,43 @@ photo passes.
 | `matches_other_person` | At least `DUPLICATE_THRESHOLD` similar to someone else already enrolled |
 | `invalid_image` / `too_large` | Can't be decoded / over the size limit |
 
-## Attendance
+### Your own fields (`metadata`)
 
-```bash
-curl -X POST localhost:8000/api/v1/attendance -H "X-API-Key: $API_KEY" -F image=@frame.jpg -F device_id=main-gate
+`metadata` holds any fields you want to keep with a person, under your own keys:
+
+```json
+{ "class": "7-A", "section": "B", "roll_no": 12, "bus_route": "R4", "hostel": false }
 ```
 
-Each face gets an `attendance` object:
+- A flat JSON object: values are text, numbers, `true`/`false` or `null`. Nested objects and lists are rejected.
+- Up to 50 keys of 1–64 characters each; text values up to 1000 characters.
+- Returned with the person (`GET /persons`, `GET /persons/{id}`) and in `match` (and `closest`) from `/recognize`,
+  so a kiosk can show it.
+- Returned to kiosks too, so don't store secrets in it.
+- Anything else fails with `422 invalid_metadata`, and nobody is enrolled.
 
-| `status` | Meaning |
-|---|---|
-| `marked` | New event created (`event_id`, `timestamp`) |
-| `already_marked` | Seen within `ATTENDANCE_COOLDOWN_SECONDS`. Returns the earlier event |
-| `unknown` | Not identified (see `unknown_reason`) |
-| `too_small` | Face too small to identify |
-| `liveness_failed` | Recognised, but the face looks like a photo or a screen. Not recorded, and the name isn't returned |
+## Update a person
 
-`GET /api/v1/attendance/summary?date=2026-11-14` returns one row per person seen that day, with `first_seen`
-(check-in), `last_seen` and `events`. To get absentees, compare with `GET /api/v1/persons`.
+`PATCH /api/v1/persons/{id}` takes a JSON body. Only the fields you send change:
+
+```bash
+curl -X PATCH localhost:8000/api/v1/persons/9f1c2a7e4b0d4e6f8a1b3c5d7e9f0a2b -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" -d '{"metadata": {"class": "8-A", "section": "B", "roll_no": 7}}'
+```
+
+The response is the updated person. `metadata` **replaces** all of the person's fields (it isn't merged), so send
+the full set. `{}` or `null` removes them, and `"name": null` or `"external_id": null` removes those. Unknown fields
+fail with `422 validation_error`, and an `external_id` used by someone else with `409 external_id_exists`. To change
+photos, use `/persons/{id}/faces`.
+
+## Delete a person
+
+```bash
+curl -X DELETE localhost:8000/api/v1/persons/9f1c2a7e4b0d4e6f8a1b3c5d7e9f0a2b -H "X-API-Key: $API_KEY"
+```
+
+Returns `204`. The person, their face data and their `metadata` are deleted. The only trace left is the audit log
+entry for the deletion, which records the name and `external_id` (see [keys-and-audit.md](keys-and-audit.md#audit-log)).
 
 ## Errors
 
@@ -152,4 +217,4 @@ Every error has the same shape and a stable `code`:
 | 404 | `person_not_found` |
 | 409 | `already_enrolled`, `external_id_exists` |
 | 413 | `image_too_large` |
-| 422 | `validation_error`, `no_usable_face` (details list each rejected photo), `invalid_name`, `no_images`, `too_many_images` |
+| 422 | `validation_error`, `no_usable_face` (details list each rejected photo), `invalid_metadata`, `no_images`, `too_many_images` |

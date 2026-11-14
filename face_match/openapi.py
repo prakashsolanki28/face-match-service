@@ -18,8 +18,7 @@ TAGS = [
     {"name": "auth", "description": "Check that your API key works."},
     {"name": "faces", "description": "Detect and identify faces. Nothing is recorded."},
     {"name": "persons", "description": "Enroll, update and remove people and their photos."},
-    {"name": "attendance", "description": "Mark attendance from camera frames and read it back."},
-    {"name": "admin", "description": "Webhook deliveries and the audit log."},
+    {"name": "admin", "description": "The audit log."},
 ]
 
 INFO: Dict[str, Any] = {

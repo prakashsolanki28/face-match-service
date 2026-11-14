@@ -13,8 +13,6 @@ from .storage import Database
 
 log = logging.getLogger(__name__)
 
-_DELIVERED_WEBHOOK_RETENTION_DAYS = 30
-
 
 def list_backups(backup_dir: Path) -> List[Path]:
     return sorted(backup_dir.glob("facematch-*.db"))
@@ -32,12 +30,9 @@ def make_backup(db: Database, backup_dir: Path, keep: int) -> Path:
 
 def apply_retention(db: Database, settings: Settings, now: Optional[float] = None) -> dict:
     now = time.time() if now is None else now
-    removed = {"attendance": 0, "webhooks": 0, "audit": 0, "gallery_changes": 0}
-    if settings.attendance_retention_days > 0:
-        removed["attendance"] = db.purge_attendance_before(now - settings.attendance_retention_days * 86400)
+    removed = {"audit": 0, "gallery_changes": 0}
     if settings.audit_retention_days > 0:
         removed["audit"] = db.purge_audit_before(now - settings.audit_retention_days * 86400)
-    removed["webhooks"] = db.purge_webhooks_before(now - _DELIVERED_WEBHOOK_RETENTION_DAYS * 86400)
     removed["gallery_changes"] = db.purge_gallery_changes_before(
         now - 86400
     )  # servers poll every few seconds

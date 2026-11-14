@@ -1,5 +1,5 @@
-"""Production features: the API key, audit log, rate limiting, overload, reliable webhooks, metrics,
-structured logs, data protection (backups, retention) and the pilot report. Generated images only."""
+"""Production features: the API key, audit log, rate limiting, overload, metrics, structured logs and
+data protection (backups, retention). Generated images only."""
 
 from __future__ import annotations
 
@@ -7,9 +7,7 @@ import json
 import logging
 import sqlite3
 import stat
-import threading
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 from conftest import sqlite_only
@@ -19,7 +17,6 @@ from face_match.maintenance import MaintenanceWorker, apply_retention, list_back
 from face_match.observability import JsonFormatter
 from face_match.security import Busy, ImageGate
 from face_match.storage import Database
-from face_match.tools import pilot_report
 
 KEY = {"X-API-Key": "the-api-key"}
 
@@ -47,7 +44,7 @@ def test_the_api_key_opens_every_endpoint(make_client):
         for headers in (KEY, bearer):
             assert client.get("/api/v1/persons", headers=headers).status_code == 200
             assert client.post("/api/v1/recognize", files=_img(), headers=headers).status_code == 200
-            assert client.post("/api/v1/attendance", files=_img(), headers=headers).status_code == 200
+            assert client.post("/api/v1/detect", files=_img(), headers=headers).status_code == 200
             assert client.get("/api/v1/audit", headers=headers).status_code == 200
             assert client.get("/metrics", headers=headers).status_code == 200
         check = client.get("/api/v1/auth/check", headers=KEY).json()
@@ -95,6 +92,25 @@ def test_old_device_keys_are_dropped_from_existing_databases(tmp_path):
     assert "api_keys" not in tables and "persons" in tables
 
 
+@sqlite_only
+def test_existing_databases_get_the_metadata_column(tmp_path):
+    path = tmp_path / "facematch.db"
+    old = sqlite3.connect(path)  # the persons table as created before metadata existed
+    old.execute(
+        "CREATE TABLE persons (id TEXT PRIMARY KEY, external_id TEXT UNIQUE, name TEXT NOT NULL,"
+        " created_at TEXT NOT NULL)"
+    )
+    old.execute("INSERT INTO persons VALUES ('p1', 'E-1', 'Asha', '2026-01-01T09:00:00+05:30')")
+    old.commit()
+    old.close()
+    db = Database(path)
+    assert db.get_person("p1")["metadata"] == {}
+    assert db.update_person("p1", {"metadata": {"class": "7-A"}})
+    assert db.get_person("p1")["metadata"] == {"class": "7-A"}
+    db.close()
+    Database(path).close()  # opening again is a no-op
+
+
 def test_audit_log_records_what_changed(make_client):
     with make_client(api_key="the-api-key") as client:
         person = _enroll(client, headers=KEY).json()["person"]
@@ -103,16 +119,19 @@ def test_audit_log_records_what_changed(make_client):
             files=[("images", ("f.png", face_png(Spec(1, 1)), "image/png"))],
             headers=KEY,
         )
-        client.delete(f"/api/v1/persons/{person['id']}?erase_history=true", headers=KEY)
+        client.patch(f"/api/v1/persons/{person['id']}", json={"metadata": {"class": "7-A"}}, headers=KEY)
+        client.delete(f"/api/v1/persons/{person['id']}", headers=KEY)
 
         entries = client.get("/api/v1/audit", headers=KEY).json()
         assert [(e["actor"], e["action"]) for e in reversed(entries)] == [
             ("api_key", "person.create"),
             ("api_key", "person.add_faces"),
+            ("api_key", "person.update"),
             ("api_key", "person.delete"),
         ]
+        assert entries[1]["details"] == {"fields": ["metadata"]}  # which fields, not their values
         deletion = entries[0]
-        assert deletion["details"] == {"name": "Asha", "external_id": "EMP-1", "erase_history": True}
+        assert deletion["details"] == {"name": "Asha", "external_id": "EMP-1"}
         assert deletion["request_id"] and deletion["ip"]
         filtered = client.get("/api/v1/audit?action=person.add*", headers=KEY).json()
         assert [e["action"] for e in filtered] == ["person.add_faces"]
@@ -140,88 +159,6 @@ def test_image_gate_refuses_when_full():
         pass
     with gate.slot():  # released again
         pass
-
-
-# ---- reliable webhooks ------------------------------------------------------------
-
-
-class _Receiver:
-    """Local HTTP endpoint that fails the first `fail_first` requests."""
-
-    def __init__(self, fail_first: int = 0):
-        self.requests = []
-        receiver = self
-
-        class Handler(BaseHTTPRequestHandler):
-            def do_POST(self):
-                body = self.rfile.read(int(self.headers["Content-Length"]))
-                receiver.requests.append((dict(self.headers), json.loads(body)))
-                self.send_response(204 if len(receiver.requests) > fail_first else 500)
-                self.end_headers()
-
-            def log_message(self, *args):
-                pass
-
-        self.server = HTTPServer(("127.0.0.1", 0), Handler)
-        self.url = f"http://127.0.0.1:{self.server.server_port}/hook"
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
-
-    def wait_for(self, count: int, timeout: float = 10.0):
-        deadline = time.time() + timeout
-        while len(self.requests) < count and time.time() < deadline:
-            time.sleep(0.05)
-        return self.requests
-
-    def close(self):
-        self.server.shutdown()
-
-
-def _wait_status(client, status, timeout=5.0):
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        rows = client.app.state.service.db.list_webhooks(status, 10)
-        if rows:
-            return rows
-        time.sleep(0.05)
-    return []
-
-
-def test_webhook_is_retried_until_delivered(make_client):
-    receiver = _Receiver(fail_first=2)
-    try:
-        with make_client(webhook_url=receiver.url, webhook_retry_base_seconds=0.2) as client:
-            _enroll(client)
-            client.post("/api/v1/attendance", files=_img())
-            requests = receiver.wait_for(3)
-            assert len(requests) == 3
-            assert len({headers["X-Event-Id"] for headers, _ in requests}) == 1  # same id on every retry
-            assert requests[-1][1]["data"]["name"] == "Asha"
-            row = _wait_status(client, "delivered")[0]
-            assert row["attempts"] == 3
-    finally:
-        receiver.close()
-
-
-def test_webhook_gives_up_then_can_be_retried(make_client):
-    receiver = _Receiver(fail_first=10**6)
-    try:
-        settings = dict(
-            api_key="the-api-key",
-            webhook_url=receiver.url,
-            webhook_retry_base_seconds=0.1,
-            webhook_max_attempts=2,
-        )
-        with make_client(**settings) as client:
-            _enroll(client, headers=KEY)
-            client.post("/api/v1/attendance", files=_img(), headers=KEY)
-            receiver.wait_for(2)
-            assert _wait_status(client, "failed")
-            failed = client.get("/api/v1/webhooks?status=failed", headers=KEY).json()
-            assert failed[0]["attempts"] == 2 and "500" in failed[0]["last_error"]
-            assert client.post(f"/api/v1/webhooks/{failed[0]['id']}/retry", headers=KEY).status_code == 202
-            assert len(receiver.wait_for(3)) >= 3
-    finally:
-        receiver.close()
 
 
 # ---- observability ----------------------------------------------------------------
@@ -270,22 +207,45 @@ def test_database_and_backups_are_owner_only(tmp_path):
 
 @sqlite_only
 def test_maintenance_backs_up_and_applies_retention(make_client):
-    with make_client(attendance_retention_days=1, backup_interval_hours=1) as client:
+    with make_client(audit_retention_days=1, backup_interval_hours=1) as client:
         service = client.app.state.service
-        _enroll(client)
-        person = service.db.list_persons()[0]
-        old = time.time() - 3 * 86400
-        service.db.mark_attendance(person, 0.9, None, old, "2026-01-01", "2026-01-01T09:00:00+00:00", 0)
-        client.post("/api/v1/attendance", files=_img())
-        assert len(service.db.list_attendance(None, None, 10)) == 2
+        _enroll(client)  # one audit entry, from now
+        service.db.add_audit("api_key", "person.delete", "person", "old")
+        three_days_ago = time.time() - 3 * 86400
+        with service.db._tx():  # make the second entry old
+            service.db._execute("UPDATE audit_log SET ts = ? WHERE target_id = 'old'", (three_days_ago,))
 
         MaintenanceWorker(service.db, service.settings).run_once()
         assert len(list_backups(service.settings.backup_dir)) == 1
-        assert len(service.db.list_attendance(None, None, 10)) == 1  # the 3-day-old event is gone
-        assert apply_retention(service.db, service.settings)["attendance"] == 0
+        assert [e["action"] for e in service.db.list_audit(10)] == ["person.create"]  # the old entry is gone
+        assert apply_retention(service.db, service.settings)["audit"] == 0
 
 
-# ---- CLI & pilot report ---------------------------------------------------------------
+@sqlite_only
+def test_attendance_tables_from_older_versions_are_left_alone(tmp_path):
+    """3.0 removed attendance, but upgrading must not delete a school's history."""
+    path = tmp_path / "facematch.db"
+    old = sqlite3.connect(path)
+    old.execute("CREATE TABLE attendance (id INTEGER PRIMARY KEY, person_id TEXT, day TEXT)")
+    old.execute("INSERT INTO attendance (person_id, day) VALUES ('p1', '2026-01-01')")
+    old.execute("CREATE TABLE webhook_outbox (id INTEGER PRIMARY KEY, payload TEXT)")
+    old.commit()
+    old.close()
+    Database(path).close()
+    copy = sqlite3.connect(path)
+    assert copy.execute("SELECT person_id, day FROM attendance").fetchall() == [("p1", "2026-01-01")]
+    assert copy.execute("SELECT COUNT(*) FROM webhook_outbox").fetchone() == (0,)
+    copy.close()
+
+
+def test_new_databases_have_no_attendance_tables(tmp_path):
+    db = Database(tmp_path / "facematch.db")
+    tables = {r["name"] for r in db._all("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert "persons" in tables and not tables & {"attendance", "webhook_outbox"}
+    db.close()
+
+
+# ---- CLI ---------------------------------------------------------------
 
 
 def test_cli_backup_and_no_keys_command(tmp_path, monkeypatch, capsys):
@@ -297,24 +257,3 @@ def test_cli_backup_and_no_keys_command(tmp_path, monkeypatch, capsys):
     with pytest.raises(SystemExit) as exit_info:
         main(["keys", "list"])
     assert exit_info.value.code == 2  # unknown command
-
-
-def test_pilot_report_compare_flags_false_presents():
-    register = {"A": True, "B": True, "C": False, "D": True}
-    marked = {"A": {"name": "a", "first_seen": "09:00"}, "C": {"name": "c", "first_seen": "09:05"}, "E": {}}
-    outcomes = {
-        r["external_id"]: r["outcome"] for r in pilot_report.compare(register, marked, {"A", "B", "C"})
-    }
-    assert outcomes == {
-        "A": "confirmed",
-        "B": "missed",
-        "C": "FALSE_PRESENT",
-        "D": "not_enrolled",
-        "E": "not_in_register",
-    }
-
-
-def test_pilot_report_reads_portal_style_register(tmp_path):
-    path = tmp_path / "register.csv"
-    path.write_text("Admission_No,Attendance\nSTU1,P\nSTU2,A\nSTU3,present\n", encoding="utf-8-sig")
-    assert pilot_report.read_register(path) == {"STU1": True, "STU2": False, "STU3": True}

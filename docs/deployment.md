@@ -64,8 +64,8 @@ is lost (see [api-keys.md](api-keys.md#3-change-rotate-the-key)).
 ## Monitoring
 
 `GET /metrics` serves Prometheus metrics: request counts and latency by route, faces by outcome (matched,
-below_threshold, ambiguous, too_small, liveness_failed), attendance marked, webhook queue size and delivery outcomes,
-rate-limited requests, backup runs, enrolled people, and process memory.
+below_threshold, ambiguous, too_small, liveness_failed), rate-limited requests, backup runs, enrolled people, and
+process memory.
 
 ```yaml
 # prometheus.yml
@@ -78,7 +78,6 @@ scrape_configs:
 ```
 
 Suggested alerts:
-- `facematch_webhook_queue{status="failed"} > 0`: your portal missed events. Retry them via `POST /api/v1/webhooks/{id}/retry`.
 - A rising rate of `5xx` in `facematch_http_requests_total`, or of `facematch_rate_limited_total{reason="busy"}`.
 - `facematch_maintenance_runs_total{kind="backup",outcome="error"}` increasing.
 
@@ -110,7 +109,6 @@ frame with one face):
 | 1 | 40 | 24 ms | 34 ms | 26 |
 | 4 | 41 | 94 ms | 131 ms | 27 |
 | 16 | 43 | 371 ms | 432 ms | 28 |
-| 8 (`/attendance`) | 54 | 143 ms | 168 ms | 36 |
 
 Throughput is bound by face detection and recognition, which each process one image at a time per server, so more
 clients add latency rather than throughput. A kiosk sends about 1.5 frames per second, so **one server serves about
@@ -135,10 +133,8 @@ What is shared, and how:
 
 | Concern | How it works with several servers |
 |---|---|
-| People, embeddings, attendance, keys, audit log, webhook queue | In PostgreSQL. Any server can handle any request; no sticky sessions needed |
+| People, embeddings, audit log | In PostgreSQL. Any server can handle any request; no sticky sessions needed |
 | New enrollments | Each server polls a change feed every `GALLERY_SYNC_SECONDS` (default 2 s) and updates its in-memory index |
-| Check-ins | A per-person database lock means two servers can't record the same check-in twice |
-| Webhooks | Deliveries are claimed with `FOR UPDATE SKIP LOCKED`, so exactly one server sends each attempt |
 | Key revocation | Takes effect within 30 s everywhere (key lookups are cached briefly) |
 | Rate limits | Counted per server: the effective limit is `RATE_LIMIT_PER_MINUTE` × number of servers |
 | Backups | Use `pg_dump` or your provider's managed backups (the built-in backups are for SQLite) |

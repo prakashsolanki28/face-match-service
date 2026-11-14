@@ -39,19 +39,18 @@ face_match/
   main.py         FastAPI app factory: wiring, error handlers, CORS
   openapi.py      the OpenAPI spec: which endpoints need the API key, auth schemes, file fields
   api.py          /api/v1 routes and API-key auth
-  service.py      business rules: enrollment checks, matching, attendance
+  service.py      business rules: enrollment checks, matching, liveness
   engine.py       FaceEngine interface + OpenCV YuNet/SFace implementation
   gallery.py      in-memory embedding index (cosine search)
   storage.py      database: SQLite, or PostgreSQL for several servers
   model_store.py  model download + SHA-256 verification
-  webhook.py      signed outbound webhooks
   schemas.py      request/response models (the API contract)
   config.py       settings from environment / .env
   security.py     the API key check, rate limiting, overload gate
   liveness.py     MiniFASNet anti-spoofing
   observability.py  metrics, request ids, JSON logs
-  maintenance.py  backups, retention, periodic workers
-  tools/          bulk_import.py (stdlib only), evaluate.py, pilot_report.py, loadtest.py, export_api.py
+  maintenance.py  backups, audit-log retention, periodic workers
+  tools/          bulk_import.py (stdlib only), evaluate.py, loadtest.py, export_api.py
 api/              openapi.json and the Postman collection/environment (generated: face-match export-api)
 tests/            API, production, multi-server, bulk-import and model smoke tests (fakes.py: model-free engine)
 docs/             user documentation

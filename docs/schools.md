@@ -1,7 +1,8 @@
-# Attendance guide: schools and offices
+# Schools and offices: enrolling hundreds of people
 
-How to run FaceMatch for hundreds of people, for example a school whose portal already holds one passport-size
-photo per student.
+How to set up FaceMatch for hundreds of people, for example a school whose portal already holds one passport-size
+photo per student. FaceMatch recognises faces; attendance itself is kept in your portal (see
+[Marking attendance in your portal](#4-marking-attendance-in-your-portal)).
 
 ## 1. Export a roster and photos
 
@@ -42,14 +43,19 @@ anything else: in our evaluation, going from 1 to 3 photos per person cut "unkno
 - **In bulk:** `face-match import ... --add-photos`.
 - **New school year:** `face-match import ... --replace`.
 
-## 4. Daily use
+## 4. Marking attendance in your portal
 
-- **Kiosk:** your camera app at the entrance sends frames to `/api/v1/attendance` with the API key
-  (see [keys-and-audit.md](keys-and-audit.md)). Each person needs 1–2 seconds in front of it. One server handles
-  about 25–35 kiosks; if 400 people arrive within 20 minutes, use 2–4 entry points.
-- **Records:** `GET /api/v1/attendance/summary?date=…` lists who was present; compare with `GET /api/v1/persons`
-  for absentees.
-- **Your portal:** receives each check-in by webhook or pulls the daily summary (see [integration.md](integration.md)).
+1. **Camera:** your camera app at the entrance sends a frame to `POST /api/v1/recognize` about once a second, with
+   the API key (see [keys-and-audit.md](keys-and-audit.md)). Each person needs 1–2 seconds in front of it.
+2. **FaceMatch** answers with `match.person_id` (and `external_id`, `name`, `metadata`) for each recognised face.
+   A printed photo or a phone screen held up to the camera gets `liveness_failed` instead of a match.
+3. **Your portal** marks those people present. The same student shows up in many frames in a row, so keep only
+   the first sighting per person per day (or the first and last, for check-in and check-out).
+4. **Unknown faces** (`match` is `null`) are left for a teacher to mark by hand. Absentees are everyone in your
+   roster without a mark for the day.
+
+One server handles about 25–35 cameras; if 400 people arrive within 20 minutes, use 2–4 entry points. Code for
+steps 3 and 4 is in [integration.md](integration.md#4-mark-attendance-in-your-portal).
 
 ## Why it doesn't guess
 
@@ -66,5 +72,5 @@ that person by hand) to a wrong name:
 
 - Run `face-match evaluate` on a pilot class: portal photos as the enrollment set, kiosk photos as probes
   (see [accuracy.md](accuracy.md)).
-- Read [privacy.md](privacy.md): consent (for children, usually from parents), retention, and the missing
-  liveness check.
+- Read [privacy.md](privacy.md): consent (for children, usually from parents), retention, and what liveness
+  can and can't catch.

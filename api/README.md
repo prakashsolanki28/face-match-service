@@ -63,8 +63,8 @@ the tool's address to `CORS_ORIGINS` on the server, or use the desktop version o
 
 ## Generate a client
 
-`openapi.json` follows OpenAPI 3.1. Operation ids are readable (`enroll_person`, `mark_attendance`,
-`list_attendance` …), and every operation that needs the API key declares it (`X-API-Key` or Bearer).
+`openapi.json` follows OpenAPI 3.1. Operation ids are readable (`enroll_person`, `recognize_faces`,
+`update_person` …), and every operation that needs the API key declares it (`X-API-Key` or Bearer).
 
 ```bash
 # TypeScript types

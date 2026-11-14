@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+# Your own fields on a person, e.g. {"class": "7-A", "roll_no": 12}. Flat: text, numbers, true/false or null.
+MetadataValue = Union[str, int, float, bool, None]
+METADATA_DESCRIPTION = (
+    "Your own fields for this person, as a JSON object of text, numbers, true/false or null "
+    "(no nested objects or lists). Up to 50 keys of at most 64 characters; text values up to 1000 "
+    "characters. Returned with the person and with every match, including to kiosks, so don't "
+    "store secrets here."
+)
+METADATA_EXAMPLE = {"class": "7-A", "section": "B", "roll_no": 12}
 
 
 class ImageSize(BaseModel):
@@ -33,9 +43,12 @@ class DetectedFace(BaseModel):
 
 
 class PersonMatch(BaseModel):
-    person_id: str
+    person_id: str = Field(description="The id returned when the person was enrolled.")
     external_id: Optional[str]
-    name: str
+    name: Optional[str] = Field(description="Null when the person was enrolled without a name.")
+    metadata: Dict[str, MetadataValue] = Field(
+        default_factory=dict, description="The person's own fields (see Person.metadata)."
+    )
     similarity: float = Field(description="Cosine similarity to the closest enrolled face.")
 
 
@@ -47,30 +60,19 @@ class RecognizedFace(DetectedFace):
     unknown_reason: Optional[UnknownReason] = Field(
         default=None,
         description="Why match is null: face too small, closest person below MATCH_THRESHOLD, "
-        "two people too close to call (MATCH_MARGIN), or nobody enrolled.",
+        "two people too close to call (MATCH_MARGIN), nobody enrolled, or the face looks like a "
+        "photo or screen (liveness_failed).",
     )
     closest: Optional[PersonMatch] = Field(
         default=None,
-        description="/recognize only, for testing and tuning: the nearest enrolled person when "
-        "match is null. Never returned by /attendance, so kiosks don't reveal near-misses.",
+        description="Only with ?closest=true, for testing and tuning: the nearest enrolled person when "
+        "match is null. Never set for liveness_failed. Never treat it as a match.",
     )
     liveness_score: Optional[float] = Field(
         default=None,
-        description="Probability that the face is live (not a photo or screen). Set on /attendance when "
-        "liveness is on, and on /recognize with ?liveness=true.",
+        description="Probability that the face is live (not a printed photo or a screen), for recognised "
+        "faces when the liveness check runs. Null for unknown faces.",
     )
-
-
-class AttendanceResult(BaseModel):
-    status: Literal["marked", "already_marked", "unknown", "too_small", "liveness_failed"]
-    event_id: Optional[int] = None
-    timestamp: Optional[str] = Field(
-        default=None, description="New event time, or the earlier event when already_marked."
-    )
-
-
-class AttendanceFace(RecognizedFace):
-    attendance: AttendanceResult
 
 
 class DetectResponse(BaseModel):
@@ -85,19 +87,40 @@ class RecognizeResponse(BaseModel):
     processing_ms: float
 
 
-class MarkAttendanceResponse(BaseModel):
-    image: ImageSize
-    device_id: Optional[str]
-    faces: List[AttendanceFace]
-    processing_ms: float
-
-
 class Person(BaseModel):
-    id: str
-    external_id: Optional[str]
-    name: str
+    id: str = Field(
+        description="FaceMatch's id for this person. Store it in your system: every match carries it "
+        "as person_id."
+    )
+    external_id: Optional[str] = Field(description="Your system's ID, if you sent one.")
+    name: Optional[str] = Field(description="Null when enrolled without a name.")
+    metadata: Dict[str, MetadataValue] = Field(
+        default_factory=dict, description=METADATA_DESCRIPTION, examples=[METADATA_EXAMPLE]
+    )
     face_count: int
     created_at: str
+
+
+class PersonUpdate(BaseModel):
+    """Only the fields you send are changed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Optional[str] = Field(
+        None, max_length=200, description="New name, or null to remove it.", examples=["Asha Verma"]
+    )
+    external_id: Optional[str] = Field(
+        None,
+        max_length=200,
+        description="New ID from your system, or null to remove it.",
+        examples=["STU0001"],
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Replaces all of the person's own fields (it is not merged). Send {} or null to remove "
+        "them. " + METADATA_DESCRIPTION.split(". ", 1)[1],
+        examples=[{"class": "8-A", "section": "B", "roll_no": 12}],
+    )
 
 
 class RejectedImage(BaseModel):
@@ -118,38 +141,6 @@ class EnrollResponse(BaseModel):
     person: Person
     accepted: int
     rejected: List[RejectedImage]
-
-
-class AttendanceEvent(BaseModel):
-    id: int
-    person_id: str
-    external_id: Optional[str]
-    name: str
-    similarity: float
-    device_id: Optional[str]
-    timestamp: str
-    day: str
-
-
-class AttendanceSummary(BaseModel):
-    person_id: str
-    external_id: Optional[str]
-    name: str
-    first_seen: str
-    last_seen: str
-    events: int
-
-
-class WebhookDelivery(BaseModel):
-    id: int
-    event_id: str
-    event: str
-    status: Literal["pending", "delivered", "failed"]
-    attempts: int
-    last_error: Optional[str]
-    created_at: float
-    delivered_at: Optional[float]
-    next_attempt_at: float
 
 
 class AuthCheck(BaseModel):

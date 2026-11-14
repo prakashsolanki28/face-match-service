@@ -21,7 +21,7 @@ take precedence). Copy [`.env.example`](../.env.example) to get started. Every s
 
 | Variable | Default | Notes |
 |---|---|---|
-| `RATE_LIMIT_PER_MINUTE` | `600` | Requests per client IP. Over the limit: `429` with `Retry-After`. `0` disables. A kiosk sends about 100 frames per minute |
+| `RATE_LIMIT_PER_MINUTE` | `600` | Requests per client IP. Over the limit: `429` with `Retry-After`. `0` disables. A kiosk sending a frame every second or so sends about 100 frames per minute |
 | `AUTH_FAILURES_PER_MINUTE` | `20` | Wrong or missing keys per IP before `429` |
 | `MAX_CONCURRENT_IMAGES` | `8` | Images processed at once. More requests wait up to 10 s, then get `503` with `Retry-After` |
 
@@ -48,22 +48,17 @@ take precedence). Copy [`.env.example`](../.env.example) to get started. Every s
 | `MAX_IMAGE_SIDE` | `1600` | Larger images are downscaled first (bigger images cost much more CPU) |
 | `MAX_UPLOAD_MB` | `8` | Upload size limit per image |
 
-## Attendance and integration
+## Time
 
 | Variable | Default | Notes |
 |---|---|---|
-| `ATTENDANCE_COOLDOWN_SECONDS` | `300` | Repeat sightings of the same person inside this window aren't logged again |
-| `TIMEZONE` | server local | IANA name such as `Asia/Kolkata`. Decides which day an event belongs to |
-| `WEBHOOK_URL` | – | Each new attendance event is POSTed here as JSON |
-| `WEBHOOK_SECRET` | – | When set, requests carry `X-Signature-256: sha256=<HMAC of the raw body>` |
-| `WEBHOOK_MAX_ATTEMPTS` | `20` | Deliveries are retried with exponential backoff (5 s, 10 s, 20 s … capped at 1 h), about 10 hours in total, then marked `failed` |
-| `WEBHOOK_RETRY_BASE_SECONDS` | `5` | First retry delay |
+| `TIMEZONE` | server local | IANA name such as `Asia/Kolkata`. Used for timestamps such as a person's `created_at` and the audit log |
 
 ## Liveness (anti-spoofing)
 
 | Variable | Default | Notes |
 |---|---|---|
-| `LIVENESS` | `on` | Check recognised faces on `/attendance` for photo or screen spoofs. `off` disables (and skips loading the models) |
+| `LIVENESS` | `on` | Check recognised faces on `/recognize` for photo or screen spoofs. A request can turn it off with `?liveness=false`. `off` disables it for every request (and skips loading the models) |
 | `LIVENESS_THRESHOLD` | `0.5` | Minimum "live" probability. Higher rejects more spoofs, but also more real people. Calibrate in your pilot; Minivision's app uses 0.915. See [privacy.md](privacy.md#liveness-detection-anti-spoofing) |
 
 ## Data protection
@@ -72,7 +67,6 @@ take precedence). Copy [`.env.example`](../.env.example) to get started. Every s
 |---|---|---|
 | `BACKUP_INTERVAL_HOURS` | `24` | Automatic consistent backups into `DATA_DIR/backups/` (owner-only files). `0` disables |
 | `BACKUP_KEEP` | `7` | Number of backups to keep |
-| `AUDIT_RETENTION_DAYS` | `0` | Delete audit entries older than this. `0` keeps them forever |
-| `ATTENDANCE_RETENTION_DAYS` | `0` | Delete attendance events older than this (checked hourly). `0` keeps them forever. Delivered webhooks are always purged after 30 days |
+| `AUDIT_RETENTION_DAYS` | `0` | Delete audit entries older than this (checked hourly). `0` keeps them forever |
 
 See [accuracy.md](accuracy.md) for how the recognition defaults were chosen.

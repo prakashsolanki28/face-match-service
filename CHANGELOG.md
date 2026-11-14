@@ -3,6 +3,58 @@
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+Breaking release: FaceMatch is now a face detection and matching service only; attendance is built in your own
+portal (release as 3.0.0).
+
+### Removed (breaking)
+- Built-in attendance: `POST /api/v1/attendance`, `GET /api/v1/attendance` and `GET /api/v1/attendance/summary`.
+  Send frames to `POST /api/v1/recognize` instead and mark the returned `person_id`s present in your portal.
+- Webhooks (their only event was `attendance.marked`): `GET /api/v1/webhooks`, `POST /api/v1/webhooks/{id}/retry`,
+  the outbound delivery worker and signed requests.
+- Settings: `ATTENDANCE_COOLDOWN_SECONDS`, `ATTENDANCE_RETENTION_DAYS`, `WEBHOOK_URL`, `WEBHOOK_SECRET`,
+  `WEBHOOK_MAX_ATTEMPTS`, `WEBHOOK_RETRY_BASE_SECONDS`. They are ignored if still set.
+- The `erase_history` parameter of `DELETE /api/v1/persons/{id}`: deleting a person now removes everything
+  FaceMatch holds about them (the audit log keeps an entry for the deletion).
+- `face-match pilot-report` (it compared FaceMatch's attendance with a register). Compare your portal's records
+  instead; `face-match evaluate` still measures accuracy. `face-match loadtest --endpoint` is now `recognize`
+  (default) or `detect`.
+- Metrics: `facematch_attendance_marked_total`, `facematch_webhook_deliveries_total`, `facematch_webhook_queue`.
+- The `attendance` OpenAPI tag, the `webhook.retry` audit action and docs/attendance.md (now docs/schools.md, about
+  enrolling hundreds of people and marking attendance in your portal).
+
+### Added
+- Enroll with photos only: `name` is optional on `POST /api/v1/persons`. Store the returned `person.id` in your
+  system; every match carries it as `person_id`.
+- `metadata`: your own fields on a person (for example class, section and roll number), sent as a JSON form field
+  on enrollment. A flat object of text, numbers, true/false or null; up to 50 keys. Returned with the person and
+  in `match`/`closest` from `/recognize`. Invalid metadata fails with `422 invalid_metadata`.
+- `PATCH /api/v1/persons/{id}`: change `name`, `external_id` or `metadata` (JSON body; only the fields you send
+  change, and `metadata` is replaced). Audited as `person.update` with the names of the changed fields.
+
+### Changed
+- `/recognize` checks liveness on recognised faces by default (the server's `LIVENESS` setting, on by default).
+  A face that looks like a printed photo or a screen gets `match: null`, `unknown_reason: "liveness_failed"` and
+  its `liveness_score`. `?liveness=false` skips the check, for photos that don't come from a live camera.
+  Previously `?liveness=true` only added a score.
+- `/recognize` returns `closest` only with `?closest=true` (for testing and tuning), so a kiosk can't learn who a
+  stranger resembles. It is never set for `liveness_failed` faces.
+- `name` can be `null` in people and matches. A blank name is treated as no name, so the `invalid_name` error is
+  no longer returned.
+- `GET /api/v1/persons` lists people without a name after everyone with one, oldest first.
+- Existing databases get a `metadata` column on startup (SQLite and PostgreSQL); no other migration is needed.
+- A concurrent enrollment with the same `external_id` returns `409 external_id_exists` on PostgreSQL too.
+
+### Upgrading
+- **Your portal now keeps attendance.** Replace calls to `/attendance` with `/recognize`, mark each
+  `match.person_id` present once per person per day (repeats and two faces of one person are yours to ignore), and
+  leave unknown faces for manual marking. See docs/integration.md. Remove any webhook receiver.
+- The old `attendance` and `webhook_outbox` tables are left in the database untouched, so no history is lost, but
+  they are no longer used and `DELETE /api/v1/persons/{id}` doesn't remove rows in them. Export what you need, then
+  drop them: `sqlite3 data/facematch.db "DROP TABLE IF EXISTS attendance; DROP TABLE IF EXISTS webhook_outbox;"`
+  (PostgreSQL: the same `DROP TABLE` statements in psql).
+
 ## [2.0.0] - 2026-11-14
 
 FaceMatch is now an API-only service.

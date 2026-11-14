@@ -11,8 +11,6 @@ services:
     environment:
       API_KEY: ${API_KEY:?Set API_KEY in .env}
       # TIMEZONE: Asia/Kolkata
-      # WEBHOOK_URL: https://your-portal.example.com/hooks/face-match
-      # WEBHOOK_SECRET: change-me
     volumes:
       - face-match-data:/data
     restart: unless-stopped

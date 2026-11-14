@@ -23,14 +23,10 @@ EXPECTED_AUTH = {
     ("post", "/api/v1/persons"): True,
     ("get", "/api/v1/persons"): True,
     ("get", "/api/v1/persons/{person_id}"): True,
+    ("patch", "/api/v1/persons/{person_id}"): True,
     ("delete", "/api/v1/persons/{person_id}"): True,
     ("post", "/api/v1/persons/{person_id}/faces"): True,
     ("put", "/api/v1/persons/{person_id}/faces"): True,
-    ("post", "/api/v1/attendance"): True,
-    ("get", "/api/v1/attendance"): True,
-    ("get", "/api/v1/attendance/summary"): True,
-    ("get", "/api/v1/webhooks"): True,
-    ("post", "/api/v1/webhooks/{delivery_id}/retry"): True,
     ("get", "/api/v1/audit"): True,
 }
 
@@ -118,7 +114,7 @@ def test_file_fields_are_marked_binary_for_client_tools(files):
     spec = files["openapi.json"]
     body = spec["components"]["schemas"]["Body_enroll_person"]["properties"]
     assert body["images"]["items"]["format"] == "binary"
-    assert spec["components"]["schemas"]["Body_mark_attendance"]["properties"]["image"]["format"] == "binary"
+    assert spec["components"]["schemas"]["Body_recognize_faces"]["properties"]["image"]["format"] == "binary"
     assert "HTTPValidationError" not in json.dumps(spec)  # errors have one shape: ErrorResponse
 
 
