@@ -1,0 +1,14 @@
+FaceMatch
+Copyright 2026 Prakash Solanki
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party models (downloaded at install/run time, not stored in this repository):
+
+  YuNet face detection model (face_detection_yunet_2023mar.onnx)
+    from the OpenCV Model Zoo, https://github.com/opencv/opencv_zoo
+    Licensed under the MIT License.
+
+  SFace face recognition model (face_recognition_sface_2021dec.onnx)
+    from the OpenCV Model Zoo, https://github.com/opencv/opencv_zoo
+    Licensed under the Apache License, Version 2.0.

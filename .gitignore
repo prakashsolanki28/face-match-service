@@ -1,0 +1,37 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Local configuration and secrets
+.env
+
+# Runtime data: enrolled faces are biometric data, never commit them
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Downloaded models (fetched and SHA-256 verified by `face-match download-models`)
+models/*.onnx
+
+# Test / evaluation artefacts
+tests/.cache/
+eval-results/
+import-report-*.csv
+
+# Local datasets (face photos must not be committed)
+dataset/
+dataset.zip
+
+# Editors / OS / tools
+.DS_Store
+.idea/
+.vscode/
+.impeccable/

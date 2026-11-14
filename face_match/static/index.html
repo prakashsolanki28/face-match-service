@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FaceMatch</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f1f3f6; --border: #e3e6eb;
+    --text: #14171c; --muted: #5d6573; --accent: #4f46e5; --accent-text: #ffffff;
+    --ok: #15803d; --ok-bg: #e8f6ec; --bad: #c2410c; --bad-bg: #fdf0e8; --idle: #6b7280;
+    --radius: 12px; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --surface: #171a20; --surface-2: #1e222a; --border: #2a2f38;
+      --text: #e8eaee; --muted: #9aa3b2; --accent: #7c74ff; --accent-text: #0f1115;
+      --ok: #4ade80; --ok-bg: #12301d; --bad: #fb923c; --bad-bg: #33200f; --idle: #9ca3af;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 24px;
+    background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 16px; }
+  .brand svg { color: var(--accent); }
+  nav { display: flex; gap: 4px; margin-left: 12px; }
+  nav button { background: none; border: 0; padding: 8px 14px; border-radius: 8px; color: var(--muted);
+    font: inherit; font-weight: 550; cursor: pointer; }
+  nav button[aria-selected="true"] { background: var(--surface-2); color: var(--text); }
+  .spacer { flex: 1; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 999px;
+    background: var(--surface-2); color: var(--muted); font-size: 13px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--idle); }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
+  a.link { color: var(--muted); font-size: 13px; text-decoration: none; }
+  a.link:hover { color: var(--text); }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+  section[hidden] { display: none; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 20px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } main { padding: 16px; } }
+  @media (max-width: 600px) { header { padding: 12px 16px; gap: 8px 12px; } nav { margin-left: 0; } .spacer { display: none; } }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 20px; }
+  .card h2 { margin: 0 0 4px; font-size: 16px; font-weight: 650; }
+  .card p.sub { margin: 0 0 16px; color: var(--muted); font-size: 14px; }
+  .stage { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #0b0d10;
+    border-radius: 10px; overflow: hidden; }
+  .stage video, .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .stage video { transform: scaleX(-1); }
+  .stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .stage.photo canvas { object-fit: contain; }
+  .stage.photo video { display: none; }
+  .check { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; font-weight: 500;
+    color: var(--muted); cursor: pointer; }
+  .check input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
+  .stage .placeholder { position: absolute; inset: 0; display: grid; place-items: center;
+    color: #9aa3b2; font-size: 14px; text-align: center; padding: 16px; }
+  .banner { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+    background: #15803d; color: #fff; padding: 10px 18px; border-radius: 999px; font-weight: 600;
+    opacity: 0; transition: opacity .25s; pointer-events: none; white-space: nowrap; }
+  .banner.show { opacity: 1; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  button.btn { font: inherit; font-weight: 600; font-size: 14px; border-radius: 8px; padding: 9px 16px;
+    cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  button.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button.btn:disabled { opacity: .5; cursor: not-allowed; }
+  button.btn.small { padding: 5px 10px; font-size: 13px; }
+  button.btn.danger { color: var(--bad); }
+  .muted { color: var(--muted); font-size: 13px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+  .seg button { font: inherit; font-size: 14px; font-weight: 600; border: 0; background: none; color: var(--muted);
+    padding: 7px 12px; border-radius: 6px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); }
+  .seg span { font-variant-numeric: tabular-nums; }
+  input[type=text], input[type=password], input[type=date], input[type=search] { width: 100%; font: inherit; padding: 9px 12px;
+    border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .field { margin-bottom: 14px; }
+  .feed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px;
+    max-height: 520px; overflow: auto; }
+  .feed li { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 10px;
+    background: var(--surface-2); }
+  .avatar { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+    font-weight: 700; font-size: 14px; background: var(--ok-bg); color: var(--ok); }
+  .avatar.bad { background: var(--bad-bg); color: var(--bad); }
+  .feed .who { font-weight: 600; } .feed .meta { color: var(--muted); font-size: 12.5px; }
+  .empty { color: var(--muted); font-size: 14px; padding: 12px 0; }
+  .thumbs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .thumb { position: relative; width: 84px; height: 84px; border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--border); }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .thumb button { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%;
+    border: 0; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; line-height: 22px; padding: 0; }
+  .notice { margin-top: 14px; padding: 12px 14px; border-radius: 10px; font-size: 14px; }
+  .notice.ok { background: var(--ok-bg); color: var(--ok); } .notice.bad { background: var(--bad-bg); color: var(--bad); }
+  .notice ul { margin: 6px 0 0; padding-left: 18px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  td { padding: 10px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: 0; }
+  .table-wrap { overflow-x: auto; }
+  .stack { display: flex; flex-direction: column; gap: 20px; }
+  .toolbar { display: flex; gap: 10px; align-items: end; margin-bottom: 14px; flex-wrap: wrap; }
+  .toolbar .field { margin: 0; }
+  #auth { display: none; align-items: center; gap: 8px; }
+  #auth input { width: 180px; padding: 6px 10px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      stroke-linecap="round" aria-hidden="true">
+      <path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/>
+      <circle cx="9" cy="10" r=".5"/><circle cx="15" cy="10" r=".5"/><path d="M9 15c1.6 1.3 4.4 1.3 6 0"/>
+    </svg>
+    FaceMatch
+  </div>
+  <nav role="tablist">
+    <button role="tab" data-tab="kiosk" aria-selected="true">Identify</button>
+    <button role="tab" data-tab="enroll" aria-selected="false">Enroll</button>
+    <button role="tab" data-tab="records" aria-selected="false">Records</button>
+  </nav>
+  <div class="spacer"></div>
+  <div id="auth"><input id="apiKey" type="password" placeholder="API key" aria-label="API key"></div>
+  <span class="pill"><span class="dot" id="statusDot"></span><span id="statusText">Connecting…</span></span>
+  <a class="link" href="/docs" target="_blank" rel="noopener">API docs ↗</a>
+</header>
+
+<main>
+  <!-- Kiosk -->
+  <section id="tab-kiosk">
+    <div class="grid">
+      <div class="card">
+        <h2>Identify faces</h2>
+        <p class="sub">Use the live camera or upload a photo. Tick Record attendance to log check-ins.</p>
+        <div class="stage" id="kioskStage">
+          <video id="kioskVideo" playsinline muted autoplay></video>
+          <canvas id="kioskOverlay"></canvas>
+          <div class="placeholder" id="kioskPlaceholder">Start the camera, or upload a photo</div>
+          <div class="banner" id="banner"></div>
+        </div>
+        <div class="row">
+          <button class="btn primary" id="kioskToggle">Start camera</button>
+          <button class="btn" id="kioskUploadBtn">Upload photo</button>
+          <input type="file" id="kioskUpload" accept="image/*" hidden>
+          <label class="check"><input type="checkbox" id="recordAttendance"> Record attendance</label>
+        </div>
+        <p class="muted" id="kioskStatus" style="margin:10px 0 0" aria-live="polite"></p>
+      </div>
+      <div class="card">
+        <h2>Activity</h2>
+        <p class="sub">Most recent first</p>
+        <ul class="feed" id="feed"><li class="empty" style="background:none;padding:0">No activity yet.</li></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Enroll -->
+  <section id="tab-enroll" hidden>
+    <div class="grid">
+      <div class="card">
+        <h2>Capture photos</h2>
+        <p class="sub">Take 3–5 photos: face the camera, then turn slightly left and right. Good, even lighting helps.</p>
+        <div class="stage">
+          <video id="enrollVideo" playsinline muted autoplay></video>
+          <div class="placeholder" id="enrollPlaceholder">Camera is off — start it, or upload photos instead</div>
+        </div>
+        <div class="row">
+          <button class="btn" id="enrollCam">Start camera</button>
+          <button class="btn primary" id="capture" disabled>Capture photo</button>
+          <button class="btn" id="uploadBtn">Upload photos</button>
+          <input type="file" id="upload" accept="image/*" multiple hidden>
+          <span class="muted" id="shotCount">0 / 5 photos</span>
+        </div>
+        <div class="thumbs" id="thumbs"></div>
+      </div>
+      <div class="card">
+        <h2>Person details</h2>
+        <p class="sub">The external ID links this person to a record in your system.</p>
+        <form id="enrollForm" autocomplete="off">
+          <div class="field"><label for="name">Full name</label>
+            <input type="text" id="name" required maxlength="200" placeholder="e.g. Asha Verma"></div>
+          <div class="field"><label for="externalId">External ID <span class="muted">(optional)</span></label>
+            <input type="text" id="externalId" maxlength="200" placeholder="e.g. EMP-1024"></div>
+          <button class="btn primary" type="submit" id="enrollSubmit" disabled>Enroll person</button>
+        </form>
+        <div id="enrollResult"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Records -->
+  <section id="tab-records" hidden>
+    <div class="stack">
+      <div class="card">
+        <h2>Daily attendance</h2>
+        <p class="sub">First sighting is the check-in; last sighting is the latest seen time.</p>
+        <div class="toolbar">
+          <div class="field"><label for="day">Date</label><input type="date" id="day"></div>
+          <button class="btn" id="refresh">Refresh</button>
+          <div class="seg" aria-label="Show">
+            <button type="button" data-view="present" aria-pressed="true">Present <span id="presentCount">0</span></button>
+            <button type="button" data-view="absent" aria-pressed="false">Absent <span id="absentCount">0</span></button>
+          </div>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Name</th><th>External ID</th><th>Check-in</th><th>Last seen</th><th>Sightings</th></tr></thead>
+          <tbody id="summaryBody"></tbody>
+        </table></div>
+      </div>
+      <div class="card">
+        <h2>Enrolled people</h2>
+        <p class="sub">Deleting a person removes their face data; past attendance is kept.</p>
+        <div class="toolbar">
+          <div class="field" style="flex:1;max-width:320px"><label for="personFilter">Search</label>
+            <input type="search" id="personFilter" placeholder="Name or ID" autocomplete="off"></div>
+          <span class="muted" id="personCount" style="padding-bottom:10px"></span>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Name</th><th>External ID</th><th>Photos</th><th>Enrolled</th><th></th></tr></thead>
+          <tbody id="personsBody"></tbody>
+        </table></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const time = (iso) => iso ? new Date(iso).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"}) : "—";
+const localDate = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+
+const state = { stream: null, scanning: false, inflight: false, timer: null, shots: [], seen: new Map() };
+const KEY_STORE = "faceMatch.apiKey";
+const RECORD_STORE = "faceMatch.recordAttendance";
+try { $("apiKey").value = localStorage.getItem(KEY_STORE) || ""; } catch {}
+try { $("recordAttendance").checked = localStorage.getItem(RECORD_STORE) === "1"; } catch {}
+$("recordAttendance").addEventListener("change", (e) => { try { localStorage.setItem(RECORD_STORE, e.target.checked ? "1" : "0"); } catch {} });
+$("apiKey").addEventListener("change", (e) => { try { localStorage.setItem(KEY_STORE, e.target.value.trim()); } catch {} loadHealth(); });
+
+async function api(path, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  const key = $("apiKey").value.trim();
+  if (key) headers["X-API-Key"] = key;
+  const res = await fetch(path, { ...options, headers });
+  const body = res.status === 204 ? null : await res.json().catch(() => null);
+  if (!res.ok) {
+    const err = new Error(body?.error?.message || `${res.status} ${res.statusText}`);
+    err.status = res.status; err.body = body; throw err;
+  }
+  return body;
+}
+
+async function loadHealth() {
+  try {
+    const h = await api("/health");
+    state.threshold = h.match_threshold;
+    state.minFace = h.min_face_size;
+    $("statusDot").className = "dot ok";
+    $("statusText").textContent = `Online · ${h.persons} enrolled`;
+    $("auth").style.display = h.auth_required ? "flex" : "none";
+  } catch {
+    $("statusDot").className = "dot bad";
+    $("statusText").textContent = "Service offline";
+  }
+}
+
+// ---- tabs ------------------------------------------------------------------
+function selectTab(name) {
+  document.querySelectorAll("nav [data-tab]").forEach((t) => t.setAttribute("aria-selected", t.dataset.tab === name));
+  document.querySelectorAll("main > section").forEach((s) => s.hidden = s.id !== `tab-${name}`);
+  stopKiosk(); stopCamera(); setEnrollCam(false);
+  if (name === "records") loadRecords();
+}
+document.querySelectorAll("nav [data-tab]").forEach((tab) => tab.addEventListener("click", () => {
+  history.replaceState(null, "", `#${tab.dataset.tab}`);
+  selectTab(tab.dataset.tab);
+}));
+
+// ---- camera ----------------------------------------------------------------
+async function startCamera(video) {
+  if (!state.stream) {
+    state.stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" }, audio: false });
+  }
+  video.srcObject = state.stream;
+  await video.play();
+  if (video.videoWidth) video.parentElement.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+}
+function stopCamera() {
+  if (state.stream) state.stream.getTracks().forEach((t) => t.stop());
+  state.stream = null;
+  $("kioskVideo").srcObject = null; $("enrollVideo").srcObject = null;
+}
+function grabFrame(video, maxWidth) {
+  const scale = Math.min(1, maxWidth / video.videoWidth);
+  const w = Math.round(video.videoWidth * scale), h = Math.round(video.videoHeight * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  canvas.getContext("2d").drawImage(video, 0, 0, w, h);
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve({ blob, w, h }), "image/jpeg", 0.9));
+}
+const cameraError = (e) => e.name === "NotAllowedError" ? "Camera permission denied." :
+  e.name === "NotFoundError" ? "No camera found." : `Camera error: ${e.message}`;
+
+// Decode any browser-readable image (applies EXIF rotation, converts HEIC on Safari),
+// downscale to the server's working size and re-encode as JPEG.
+function prepareImage(file, maxSide = 1600) {
+  return new Promise((resolve, reject) => {
+    const src = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(src);
+      const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.round(img.naturalWidth * scale), h = Math.round(img.naturalHeight * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      canvas.toBlob((blob) => blob ? resolve({ blob, w, h }) : reject(new Error("Could not process this image.")),
+        "image/jpeg", 0.92);
+    };
+    img.onerror = () => { URL.revokeObjectURL(src); reject(new Error("This file can't be read as an image. Use JPEG, PNG or WebP.")); };
+    img.src = src;
+  });
+}
+const jpgName = (name) => (name || "photo").replace(/\.[^.]+$/, "") + ".jpg";
+
+// Identify faces in an image; records attendance when the checkbox is on.
+async function identify(blob, filename, deviceId) {
+  const record = $("recordAttendance").checked;
+  const form = new FormData();
+  form.append("image", blob, filename);
+  if (record) form.append("device_id", deviceId);
+  const res = await api(record ? "/api/v1/attendance" : "/api/v1/recognize", { method: "POST", body: form });
+  res.faces.forEach((f) => {
+    if (!f.attendance) f.attendance = { status: f.match ? "identified" : f.unknown_reason === "too_small" ? "too_small" : "unknown" };
+  });
+  return res;
+}
+
+// ---- kiosk -----------------------------------------------------------------
+$("kioskToggle").addEventListener("click", async () => {
+  if (state.scanning) { stopKiosk(); stopCamera(); return; }
+  try {
+    clearPhoto();
+    await startCamera($("kioskVideo"));
+    $("kioskPlaceholder").hidden = true;
+    state.scanning = true;
+    $("kioskToggle").textContent = "Stop camera";
+    $("kioskStatus").textContent = "Scanning…";
+    scanLoop();
+  } catch (e) { $("kioskStatus").textContent = cameraError(e); }
+});
+
+function stopKiosk() {
+  state.scanning = false; clearTimeout(state.timer);
+  $("kioskToggle").textContent = "Start camera";
+  $("kioskStatus").textContent = "";
+  $("kioskPlaceholder").hidden = false;
+  const c = $("kioskOverlay"); c.getContext("2d").clearRect(0, 0, c.width, c.height);
+  clearPhoto();
+}
+
+// ---- photo upload ------------------------------------------------------------
+$("kioskUploadBtn").addEventListener("click", () => $("kioskUpload").click());
+$("kioskUpload").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  stopKiosk(); stopCamera();
+  $("kioskUploadBtn").disabled = true;
+  $("kioskStatus").textContent = "Identifying…";
+  try {
+    const { blob, w, h } = await prepareImage(file);
+    showPhoto(blob, w, h);
+    const res = await identify(blob, jpgName(file.name), "web-upload");
+    drawOverlay(res.faces, w, h, false);
+    res.faces.filter((f) => !isSmall(f)).forEach(addFeed);  // small faces are summarised in the status line
+    const marked = res.faces.find((f) => f.attendance.status === "marked");
+    if (marked) showBanner(`Welcome, ${marked.match.name}`);
+    $("kioskStatus").textContent = `${describe(res.faces)} · ${res.processing_ms} ms`;
+  } catch (err) {
+    $("kioskStatus").textContent = err.message;
+  } finally { $("kioskUploadBtn").disabled = false; }
+});
+
+function showPhoto(blob, w, h) {
+  clearPhoto();
+  const img = document.createElement("img");
+  img.id = "kioskImage";
+  img.alt = "Uploaded photo";
+  img.src = URL.createObjectURL(blob);
+  $("kioskStage").insertBefore(img, $("kioskOverlay"));
+  $("kioskStage").classList.add("photo");
+  $("kioskStage").style.aspectRatio = "";
+  $("kioskPlaceholder").hidden = true;
+  const c = $("kioskOverlay");
+  c.width = w; c.height = h;
+}
+function clearPhoto() {
+  const img = $("kioskImage");
+  if (img) { URL.revokeObjectURL(img.src); img.remove(); }
+  $("kioskStage").classList.remove("photo");
+}
+// Explains an unknown face. `closest` is only sent by /recognize (Record attendance unticked).
+function unknownText(face) {
+  const c = face.closest, reason = face.unknown_reason;
+  const pct = (x) => `${Math.round(x * 100)}%`;
+  if (face.attendance?.status === "too_small" || reason === "too_small") return "Face too small to identify — move closer";
+  if (reason === "nobody_enrolled") return "Nobody is enrolled yet";
+  if (reason === "ambiguous") return c ? `Too close to call: looks like ${c.name} (${pct(c.similarity)}) and someone else`
+    : "Too close to call between two enrolled people";
+  if (c) return `Not recognised · closest: ${c.name} ${pct(c.similarity)}, needs ${pct(state.threshold ?? 0.4)}`;
+  return "Not recognised";
+}
+
+const isSmall = (f) => f.attendance.status === "too_small";
+
+function describe(faces) {
+  if (!faces.length) return "No face found in this photo.";
+  const known = faces.filter((f) => f.match).map((f) => f.match.name);
+  const small = faces.filter(isSmall);
+  const count = `${faces.length} face${faces.length === 1 ? "" : "s"} found`;
+  const need = `needs ${state.minFace ?? 40} px`;
+  if (small.length === faces.length) {
+    const largest = Math.max(...small.map((f) => f.box.width));
+    return `${count}, ${faces.length === 1 ? "but it is" : "all"} too small to identify `
+      + `(largest ${largest} px wide; ${need}). Use a larger or closer photo.`;
+  }
+  const smallNote = small.length ? ` · ${small.length} too small (${need})` : "";
+  const hint = $("recordAttendance").checked && faces.some((f) => !f.match && !isSmall(f))
+    ? " (untick Record attendance to see the closest match)" : "";
+  return (known.length ? `${count} · identified: ${known.join(", ")}` : `${count} · nobody recognised`) + smallNote + hint;
+}
+
+async function scanLoop() {
+  if (!state.scanning) return;
+  const video = $("kioskVideo");
+  if (!state.inflight && video.readyState >= 2 && video.videoWidth) {
+    state.inflight = true;
+    try {
+      const { blob, w, h } = await grabFrame(video, 640);
+      const res = await identify(blob, "frame.jpg", "web-kiosk");
+      if (state.scanning) { drawOverlay(res.faces, w, h, true); handleFaces(res.faces); }
+      $("kioskStatus").textContent = `Scanning… ${res.processing_ms} ms/frame`;
+    } catch (e) {
+      $("kioskStatus").textContent = e.message;
+    } finally { state.inflight = false; }
+  }
+  state.timer = setTimeout(scanLoop, 600);
+}
+
+// Overlay colours sit on top of a photo, not the page, so they are fixed (white text stays readable in both themes).
+// Small faces get a dashed box; on photos there is no label (several tiny faces would overlap),
+// the status line explains instead. On the live camera, "Move closer" is the useful instruction.
+function styleFor(face, live) {
+  const s = face.attendance.status;
+  if (s === "marked" || s === "already_marked" || s === "identified")
+    return { color: "#15803d", label: `${face.match.name} · ${Math.round(face.match.similarity * 100)}%` };
+  if (s === "too_small") return { color: "#6b7280", label: live ? "Move closer" : "", dashed: true };
+  return { color: "#c2410c", label: "Unknown" };
+}
+
+function drawOverlay(faces, w, h, mirror) {
+  const canvas = $("kioskOverlay");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, w, h);
+  ctx.lineWidth = Math.max(2, w / 320);
+  ctx.font = `600 ${Math.max(12, Math.round(w / 45))}px -apple-system, Segoe UI, sans-serif`;
+  for (const face of faces) {
+    const { x, y, width, height } = face.box;
+    const mx = mirror ? w - x - width : x; // the live preview is mirrored, photos are not
+    const { color, label, dashed } = styleFor(face, mirror);
+    ctx.strokeStyle = color; ctx.fillStyle = color;
+    ctx.setLineDash(dashed ? [4, 3] : []);
+    const r = Math.min(8, width / 4);
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(mx, y, width, height, r) : ctx.rect(mx, y, width, height); ctx.stroke();
+    ctx.setLineDash([]);
+    if (!label) continue;
+    const pad = 6, th = parseInt(ctx.font.match(/(\d+)px/)[1], 10) + pad * 2;
+    const tw = ctx.measureText(label).width + pad * 2;
+    const ty = y - th - 4 > 0 ? y - th - 4 : y + height + 4;
+    ctx.fillRect(mx, ty, tw, th);
+    ctx.fillStyle = "#fff"; ctx.fillText(label, mx + pad, ty + th - pad - 2);
+  }
+}
+
+function handleFaces(faces) {
+  const now = Date.now();
+  for (const face of faces) {
+    const status = face.attendance.status;
+    if (status === "too_small") continue;
+    const key = face.match ? face.match.person_id : "unknown";
+    const last = state.seen.get(key);
+    // Throttle the feed: new check-ins always show; repeats at most every 30 s; unknowns every 10 s.
+    const quiet = status === "marked" ? 0 : status === "unknown" ? 10000 : 30000;
+    if (status !== "marked" && last && now - last < quiet) continue;
+    state.seen.set(key, now);
+    if (status === "marked") showBanner(`Welcome, ${face.match.name}`);
+    addFeed(face);
+  }
+}
+
+function addFeed(face) {
+  const feed = $("feed");
+  feed.querySelector(".empty")?.remove();
+  const li = document.createElement("li");
+  const s = face.attendance.status;
+  const text = s === "marked" ? "Checked in" : s === "already_marked" ? `Already marked at ${time(face.attendance.timestamp)}`
+    : s === "identified" ? "Identified (attendance not recorded)" : unknownText(face);
+  const sim = face.match ? ` · ${Math.round(face.match.similarity * 100)}% match` : "";
+  const name = face.match ? face.match.name : s === "too_small" ? "Small face" : "Unknown face";
+  li.innerHTML = `<div class="avatar ${face.match ? "" : "bad"}">${face.match ? esc(name.trim()[0] || "?").toUpperCase() : "?"}</div>
+    <div><div class="who">${esc(name)}</div><div class="meta">${esc(text)}${sim} · ${time(new Date().toISOString())}</div></div>`;
+  feed.prepend(li);
+  while (feed.children.length > 50) feed.lastChild.remove();
+}
+
+let bannerTimer;
+function showBanner(text) {
+  const b = $("banner"); b.textContent = text; b.classList.add("show");
+  clearTimeout(bannerTimer); bannerTimer = setTimeout(() => b.classList.remove("show"), 2500);
+}
+
+// ---- enroll ----------------------------------------------------------------
+function setEnrollCam(on) {
+  $("enrollCam").textContent = on ? "Stop camera" : "Start camera";
+  $("enrollPlaceholder").hidden = on;
+  $("capture").disabled = !on || state.shots.length >= 5;
+}
+$("enrollCam").addEventListener("click", async () => {
+  if (state.stream) { stopCamera(); setEnrollCam(false); return; }
+  try { await startCamera($("enrollVideo")); setEnrollCam(true); }
+  catch (e) { $("enrollPlaceholder").textContent = cameraError(e); }
+});
+$("capture").addEventListener("click", async () => {
+  const { blob } = await grabFrame($("enrollVideo"), 1280);
+  addShot(blob, `capture-${state.shots.length + 1}.jpg`);
+});
+$("uploadBtn").addEventListener("click", () => $("upload").click());
+$("upload").addEventListener("change", async (e) => {
+  const files = [...e.target.files];
+  e.target.value = "";
+  for (const file of files) {
+    if (state.shots.length >= 5) break;
+    try {
+      const { blob } = await prepareImage(file);  // large phone photos are shrunk to fit the upload limit
+      addShot(blob, jpgName(file.name));
+    } catch (err) { notice("bad", esc(`${file.name}: ${err.message}`)); }
+  }
+});
+function addShot(blob, filename) {
+  state.shots.push({ blob, filename, url: URL.createObjectURL(blob) });
+  renderShots();
+}
+function renderShots() {
+  $("thumbs").innerHTML = "";
+  state.shots.forEach((shot, i) => {
+    const div = document.createElement("div");
+    div.className = "thumb";
+    div.innerHTML = `<img alt="Photo ${i + 1}" src="${shot.url}"><button type="button" aria-label="Remove photo">×</button>`;
+    div.querySelector("button").onclick = () => { URL.revokeObjectURL(shot.url); state.shots.splice(i, 1); renderShots(); };
+    $("thumbs").append(div);
+  });
+  $("shotCount").textContent = `${state.shots.length} / 5 photos`;
+  $("capture").disabled = !state.stream || state.shots.length >= 5;
+  $("enrollSubmit").disabled = state.shots.length === 0;
+}
+
+const REASONS = {
+  invalid_image: "not a valid image", too_large: "file is too large", no_face: "no face found",
+  multiple_faces: "more than one face", face_too_small: "face too small — move closer",
+  inconsistent_identity: "doesn't match the other photos", matches_other_person: "matches someone already enrolled",
+};
+function notice(kind, html) { $("enrollResult").innerHTML = `<div class="notice ${kind}">${html}</div>`; }
+const reasonList = (items) => items.length ? `<ul>${items.map((r) => `<li>Photo ${r.index + 1}: ${esc(REASONS[r.reason] || r.reason)}</li>`).join("")}</ul>` : "";
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const photoForm = () => { const f = new FormData(); state.shots.forEach((s) => f.append("images", s.blob, s.filename)); return f; };
+
+function submitEnroll(allowDuplicate = false) {
+  const form = photoForm();
+  form.append("name", $("name").value.trim());
+  if ($("externalId").value.trim()) form.append("external_id", $("externalId").value.trim());
+  if (allowDuplicate) form.append("allow_duplicate", "true");
+  return sendPhotos("/api/v1/persons", form,
+    (res) => `<strong>${esc(res.person.name)}</strong> enrolled with ${plural(res.accepted, "photo")}.`);
+}
+// Adds the captured photos to someone already enrolled, e.g. a live photo on top of a passport photo.
+function addPhotosTo(person) {
+  return sendPhotos(`/api/v1/persons/${encodeURIComponent(person.id)}/faces`, photoForm(),
+    (res) => `Added ${plural(res.accepted, "photo")} to <strong>${esc(res.person.name)}</strong> (${res.person.face_count} on file).`);
+}
+
+async function sendPhotos(path, form, successText) {
+  $("enrollSubmit").disabled = true;
+  try {
+    const res = await api(path, { method: "POST", body: form });
+    notice("ok", successText(res) + (res.rejected.length ? ` Skipped:${reasonList(res.rejected)}` : ""));
+    state.shots.forEach((s) => URL.revokeObjectURL(s.url)); state.shots = [];
+    $("enrollForm").reset(); renderShots(); loadHealth();
+  } catch (err) {
+    const error = err.body?.error || {};
+    const person = error.details?.person;
+    const who = person ? `<strong>${esc(person.name)}</strong>${person.external_id ? ` (${esc(person.external_id)})` : ""}` : "";
+    if (error.code === "external_id_exists" && person) {
+      notice("bad", `This ID is already enrolled as ${who}.
+        <div class="row"><button type="button" class="btn small" id="addExisting">Add these photos to ${esc(person.name)}</button></div>`);
+      $("addExisting").onclick = () => addPhotosTo(person);
+    } else if (error.code === "already_enrolled" && person) {
+      notice("bad", `This face looks like ${who}, who is already enrolled.
+        <div class="row"><button type="button" class="btn small" id="enrollAnyway">They're different people (e.g. twins) — enroll anyway</button></div>`);
+      $("enrollAnyway").onclick = () => submitEnroll(true);
+    } else {
+      notice("bad", `${esc(err.message)}${Array.isArray(error.details) ? reasonList(error.details) : ""}`);
+    }
+    $("enrollSubmit").disabled = state.shots.length === 0;
+  }
+}
+$("enrollForm").addEventListener("submit", (e) => { e.preventDefault(); submitEnroll(); });
+
+// ---- records ---------------------------------------------------------------
+$("day").value = localDate();
+$("day").addEventListener("change", loadRecords);
+$("refresh").addEventListener("click", loadRecords);
+
+const emptyRow = (cols, text) => `<tr><td colspan="${cols}" class="empty">${text}</td></tr>`;
+const records = { summary: [], persons: [], view: "present" };
+
+async function loadRecords() {
+  try {
+    [records.summary, records.persons] = await Promise.all([
+      api(`/api/v1/attendance/summary?date=${encodeURIComponent($("day").value)}`),
+      api("/api/v1/persons"),
+    ]);
+  } catch (e) {
+    records.summary = []; records.persons = [];
+    $("summaryBody").innerHTML = emptyRow(5, esc(e.message));
+    $("personsBody").innerHTML = "";
+    return;
+  }
+  renderSummary(); renderPersons();
+}
+
+function renderSummary() {
+  const seen = new Set(records.summary.map((r) => r.person_id));
+  const absent = records.persons.filter((p) => !seen.has(p.id));
+  $("presentCount").textContent = records.summary.length;
+  $("absentCount").textContent = absent.length;
+  document.querySelectorAll(".seg [data-view]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.view === records.view));
+  if (records.view === "absent") {
+    $("summaryBody").innerHTML = absent.length ? absent.map((p) => `<tr><td>${esc(p.name)}</td>
+      <td>${esc(p.external_id || "—")}</td><td class="muted">Not seen</td><td class="muted">—</td><td>0</td></tr>`).join("")
+      : emptyRow(5, records.persons.length ? "Everyone enrolled was seen on this date." : "Nobody enrolled yet.");
+  } else {
+    $("summaryBody").innerHTML = records.summary.length ? records.summary.map((r) => `<tr><td>${esc(r.name)}</td>
+      <td>${esc(r.external_id || "—")}</td><td>${time(r.first_seen)}</td><td>${time(r.last_seen)}</td><td>${r.events}</td></tr>`).join("")
+      : emptyRow(5, "No attendance recorded for this date.");
+  }
+}
+
+function renderPersons() {
+  const q = $("personFilter").value.trim().toLowerCase();
+  const list = q ? records.persons.filter((p) => p.name.toLowerCase().includes(q) || (p.external_id || "").toLowerCase().includes(q))
+    : records.persons;
+  $("personCount").textContent = q ? `${list.length} of ${records.persons.length}` : `${records.persons.length} enrolled`;
+  $("personsBody").innerHTML = list.length ? list.map((p) => `<tr><td>${esc(p.name)}</td>
+    <td>${esc(p.external_id || "—")}</td><td>${p.face_count}</td><td>${new Date(p.created_at).toLocaleDateString()}</td>
+    <td style="text-align:right"><button class="btn small danger" data-id="${esc(p.id)}" data-name="${esc(p.name)}">Delete</button></td></tr>`).join("")
+    : emptyRow(5, records.persons.length ? "No one matches your search." : "Nobody enrolled yet. Use the Enroll tab, or bulk import (see README).");
+}
+
+document.querySelectorAll(".seg [data-view]").forEach((b) => b.addEventListener("click", () => {
+  records.view = b.dataset.view; renderSummary();
+}));
+$("personFilter").addEventListener("input", renderPersons);
+$("personsBody").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-id]");
+  if (!btn || !confirm(`Delete ${btn.dataset.name} and their face data?`)) return;
+  try { await api(`/api/v1/persons/${encodeURIComponent(btn.dataset.id)}`, { method: "DELETE" }); }
+  catch (err) { alert(err.message); }
+  loadRecords(); loadHealth();
+});
+
+loadHealth();
+function tabFromHash() {
+  const tab = location.hash.slice(1);
+  if (["kiosk", "enroll", "records"].includes(tab)) selectTab(tab);
+}
+window.addEventListener("hashchange", tabFromHash);  // links, back/forward
+tabFromHash();
+</script>
+</body>
+</html>

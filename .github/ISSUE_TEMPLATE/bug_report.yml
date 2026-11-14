@@ -1,0 +1,44 @@
+name: Bug report
+description: Something doesn't work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! **Never attach photos of real people or your data/ folder.** Describe the image instead (size, number of faces, lighting).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Include the request you sent and the response you got (redact API keys).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+  - type: input
+    id: version
+    attributes:
+      label: FaceMatch version
+      description: Output of `face-match --version` or the `version` field of GET /health.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run it?
+      options: [Docker image, docker compose, pip / from source]
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS / CPU
+      placeholder: Ubuntu 24.04 x86_64, macOS 15 arm64, Raspberry Pi 5 ...
