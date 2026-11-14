@@ -23,6 +23,7 @@ from .liveness import load_liveness
 from .maintenance import MaintenanceWorker, Periodic
 from .model_store import ensure_models
 from .observability import Metrics, configure_logging, process_gauges, request_id_var
+from .openapi import INFO, install_openapi
 from .schemas import Health
 from .security import ImageGate, KeyStore, RateLimiter
 from .service import FaceService, ServiceError
@@ -130,6 +131,9 @@ def create_app(
         # documentation pages are off unless API_DOCS=true.
         docs_url="/docs" if settings.api_docs else None,
         redoc_url="/redoc" if settings.api_docs else None,
+        # Readable operation ids (e.g. "enroll_person") for client code generators.
+        generate_unique_id_function=lambda route: route.name,
+        **INFO,
     )
     app.state.settings = settings
     app.state.service = service
@@ -194,7 +198,7 @@ def create_app(
     async def _http_error(_: Request, exc: StarletteHTTPException):
         return _error(exc.status_code, "http_error", str(exc.detail))
 
-    @app.get("/health", response_model=Health, tags=["system"])
+    @app.get("/health", summary="Health check", response_model=Health, tags=["system"])
     def health():
         """Liveness/readiness probe: also checks that the database answers."""
         current = db.stats()
@@ -212,6 +216,7 @@ def create_app(
 
     @app.get(
         "/metrics",
+        summary="Prometheus metrics",
         tags=["system"],
         response_class=PlainTextResponse,
         dependencies=[require("metrics")],
@@ -220,10 +225,11 @@ def create_app(
         """Prometheus metrics. Needs a key with the `metrics` scope when auth is on."""
         return PlainTextResponse(metrics.render(), media_type="text/plain; version=0.0.4")
 
-    @app.get("/", tags=["system"])
+    @app.get("/", summary="Service info", tags=["system"])
     def root():
         """Service identification for humans and load balancers."""
         return {"service": "FaceMatch", "version": __version__, "api": "/api/v1", "openapi": "/openapi.json"}
 
     app.include_router(router)
+    install_openapi(app, router)
     return app

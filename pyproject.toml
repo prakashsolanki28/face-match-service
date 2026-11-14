@@ -55,7 +55,7 @@ path = "face_match/__init__.py"
 packages = ["face_match"]
 
 [tool.hatch.build.targets.sdist]
-include = ["face_match", "tests", "examples", "docs", "README.md", "LICENSE", "NOTICE", "CHANGELOG.md"]
+include = ["face_match", "tests", "docs", "api", "README.md", "LICENSE", "NOTICE", "CHANGELOG.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

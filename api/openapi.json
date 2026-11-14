@@ -1,0 +1,3663 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FaceMatch",
+    "description": "Self-hosted face detection, face matching and attendance API. Send images as multipart/form-data. Authenticate with the `X-API-Key` header (or `Authorization: Bearer <key>`).",
+    "contact": {
+      "name": "FaceMatch on GitHub",
+      "url": "https://github.com/prakashsolanki28/face-match-service"
+    },
+    "license": {
+      "name": "Apache-2.0",
+      "identifier": "Apache-2.0"
+    },
+    "version": "2.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "Local server. Change it to yours, e.g. https://face.example.com"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Health check",
+        "description": "Liveness/readiness probe: also checks that the database answers.\n\n**Permission:** none (public).",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Prometheus metrics",
+        "description": "Prometheus metrics. Needs a key with the `metrics` scope when auth is on.\n\n**Permission:** an API key with the `metrics` scope (or the admin key).",
+        "operationId": "prometheus_metrics",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "x-required-scope": "metrics"
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Service info",
+        "description": "Service identification for humans and load balancers.\n\n**Permission:** none (public).",
+        "operationId": "root",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/detect": {
+      "post": {
+        "tags": [
+          "faces"
+        ],
+        "summary": "Detect faces",
+        "description": "Find faces in an image (no identity lookup).\n\n**Permission:** an API key with the `recognize` scope (or the admin key).",
+        "operationId": "detect_faces",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_detect_faces"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetectResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "x-required-scope": "recognize"
+      }
+    },
+    "/api/v1/recognize": {
+      "post": {
+        "tags": [
+          "faces"
+        ],
+        "summary": "Recognize faces",
+        "description": "Find faces and identify enrolled people. Does not record anything.\n\n**Permission:** an API key with the `recognize` scope (or the admin key).",
+        "operationId": "recognize_faces",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "liveness",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Also return liveness_score for each face.",
+              "default": false,
+              "title": "Liveness"
+            },
+            "description": "Also return liveness_score for each face."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_recognize_faces"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecognizeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "x-required-scope": "recognize"
+      }
+    },
+    "/api/v1/persons": {
+      "post": {
+        "tags": [
+          "persons"
+        ],
+        "summary": "Enroll a person",
+        "description": "Enroll a person. 3-5 photos (slightly different angles/lighting) give the best accuracy.\n\n**Permission:** an API key with the `enroll` scope (or the admin key).",
+        "operationId": "enroll_person",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_enroll_person"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "x-required-scope": "enroll"
+      },
+      "get": {
+        "tags": [
+          "persons"
+        ],
+        "summary": "List people",
+        "description": "People sorted by name. `X-Total-Count` holds the total for paging.\n\n**Permission:** an API key with the `read` scope (or the admin key).",
+        "operationId": "list_persons",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "external_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Look up one person by your system's ID.",
+              "examples": [
+                "EMP-001"
+              ],
+              "title": "External Id"
+            },
+            "description": "Look up one person by your system's ID."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 10000,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Page size (default: everyone).",
+              "title": "Limit"
+            },
+            "description": "Page size (default: everyone)."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Skip this many results (for paging).",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Skip this many results (for paging)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Person"
+                  },
+                  "title": "Response List Persons"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/persons/{person_id}": {
+      "get": {
+        "tags": [
+          "persons"
+        ],
+        "summary": "Get a person",
+        "description": "One person, by the id returned at enrollment.\n\n**Permission:** an API key with the `read` scope (or the admin key).",
+        "operationId": "get_person",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The person's id, returned when they were enrolled.",
+              "title": "Person Id"
+            },
+            "description": "The person's id, returned when they were enrolled."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Person"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "x-required-scope": "read"
+      },
+      "delete": {
+        "tags": [
+          "persons"
+        ],
+        "summary": "Delete a person",
+        "description": "Delete a person and their face data. Attendance history is kept unless erase_history=true.\n\n**Permission:** an API key with the `enroll` scope (or the admin key).",
+        "operationId": "delete_person",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The person's id, returned when they were enrolled.",
+              "title": "Person Id"
+            },
+            "description": "The person's id, returned when they were enrolled."
+          },
+          {
+            "name": "erase_history",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Also delete the person's attendance events and queued webhooks (right to erasure).",
+              "default": false,
+              "title": "Erase History"
+            },
+            "description": "Also delete the person's attendance events and queued webhooks (right to erasure)."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "x-required-scope": "enroll"
+      }
+    },
+    "/api/v1/persons/{person_id}/faces": {
+      "post": {
+        "tags": [
+          "persons"
+        ],
+        "summary": "Add photos to a person",
+        "description": "Add more photos to an existing person to improve recognition.\n\n**Permission:** an API key with the `enroll` scope (or the admin key).",
+        "operationId": "add_faces",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The person's id, returned when they were enrolled.",
+              "title": "Person Id"
+            },
+            "description": "The person's id, returned when they were enrolled."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_faces"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "x-required-scope": "enroll"
+      },
+      "put": {
+        "tags": [
+          "persons"
+        ],
+        "summary": "Replace a person's photos",
+        "description": "Replace all photos of a person (e.g. new school-year photos).\n\nAll-or-nothing: if none of the new photos is usable, the current photos are kept.\n\n**Permission:** an API key with the `enroll` scope (or the admin key).",
+        "operationId": "replace_faces",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The person's id, returned when they were enrolled.",
+              "title": "Person Id"
+            },
+            "description": "The person's id, returned when they were enrolled."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_replace_faces"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "x-required-scope": "enroll"
+      }
+    },
+    "/api/v1/attendance": {
+      "post": {
+        "tags": [
+          "attendance"
+        ],
+        "summary": "Mark attendance",
+        "description": "Recognise everyone in the frame and record attendance.\n\nRepeat sightings within ATTENDANCE_COOLDOWN_SECONDS return `already_marked`. With liveness on,\na face that looks like a photo or screen returns `liveness_failed` and is not recorded.\n\n**Permission:** an API key with the `attendance` scope (or the admin key).",
+        "operationId": "mark_attendance",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_mark_attendance"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkAttendanceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "x-required-scope": "attendance"
+      },
+      "get": {
+        "tags": [
+          "attendance"
+        ],
+        "summary": "List attendance events",
+        "description": "Raw attendance events, newest first.\n\n**Permission:** an API key with the `read` scope (or the admin key).",
+        "operationId": "list_attendance",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "YYYY-MM-DD; omit for all days.",
+              "examples": [
+                "2026-01-15"
+              ],
+              "title": "Date"
+            },
+            "description": "YYYY-MM-DD; omit for all days."
+          },
+          {
+            "name": "person_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this person's events.",
+              "title": "Person Id"
+            },
+            "description": "Only this person's events."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5000,
+              "minimum": 1,
+              "description": "Page size.",
+              "default": 200,
+              "title": "Limit"
+            },
+            "description": "Page size."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Skip this many results (for paging).",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Skip this many results (for paging)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AttendanceEvent"
+                  },
+                  "title": "Response List Attendance"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/attendance/summary": {
+      "get": {
+        "tags": [
+          "attendance"
+        ],
+        "summary": "Daily attendance summary",
+        "description": "One row per person for the day: first seen (check-in), last seen (check-out).\n\n**Permission:** an API key with the `read` scope (or the admin key).",
+        "operationId": "attendance_summary",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "YYYY-MM-DD; defaults to today.",
+              "examples": [
+                "2026-01-15"
+              ],
+              "title": "Date"
+            },
+            "description": "YYYY-MM-DD; defaults to today."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AttendanceSummary"
+                  },
+                  "title": "Response Attendance Summary"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/keys": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List API keys",
+        "description": "All API keys, active and revoked. Tokens are never returned.\n\n**Permission:** an API key with the `admin` scope (or the admin key).",
+        "operationId": "list_keys",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApiKey"
+                  },
+                  "type": "array",
+                  "title": "Response List Keys"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "x-required-scope": "admin"
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Create an API key",
+        "description": "Create a scoped API key, e.g. `{\"name\": \"gate-1\", \"scopes\": [\"attendance\"]}` for a kiosk.\n\nThe token is returned only once.\n\n**Permission:** an API key with the `admin` scope (or the admin key).",
+        "operationId": "create_key",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "x-required-scope": "admin"
+      }
+    },
+    "/api/v1/keys/{key_id}": {
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Revoke an API key",
+        "description": "Revoke a key immediately.\n\n**Permission:** an API key with the `admin` scope (or the admin key).",
+        "operationId": "revoke_key",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The key's id.",
+              "title": "Key Id"
+            },
+            "description": "The key's id."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "x-required-scope": "admin"
+      }
+    },
+    "/api/v1/webhooks": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List webhook deliveries",
+        "description": "Webhook delivery queue, newest first. Failed deliveries can be retried.\n\n**Permission:** an API key with the `admin` scope (or the admin key).",
+        "operationId": "list_webhooks",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "delivered",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this status: pending, delivered or failed.",
+              "title": "Status"
+            },
+            "description": "Only this status: pending, delivered or failed."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Page size.",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Page size."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Skip this many results (for paging).",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Skip this many results (for paging)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WebhookDelivery"
+                  },
+                  "title": "Response List Webhooks"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "x-required-scope": "admin"
+      }
+    },
+    "/api/v1/webhooks/{delivery_id}/retry": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Retry a webhook delivery",
+        "description": "Send a failed webhook delivery again.\n\n**Permission:** an API key with the `admin` scope (or the admin key).",
+        "operationId": "retry_webhook",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "delivery_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "The delivery's id, from GET /webhooks.",
+              "title": "Delivery Id"
+            },
+            "description": "The delivery's id, from GET /webhooks."
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "x-required-scope": "admin"
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Who am I (check your key)",
+        "description": "Which key this is and what it may do (useful to check a kiosk or integration key).\n\n**Permission:** any valid API key.",
+        "operationId": "whoami",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhoAmI"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "x-required-scope": "any"
+      }
+    },
+    "/api/v1/audit": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Audit log",
+        "description": "Who changed what: enrollments, photo changes, deletions, keys, webhook retries. Newest first.\n\n**Permission:** an API key with the `admin` scope (or the admin key).",
+        "operationId": "list_audit",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Page size.",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Page size."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Skip this many results (for paging).",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Skip this many results (for paging)."
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter, e.g. person.* or key.revoke",
+              "title": "Action"
+            },
+            "description": "Filter, e.g. person.* or key.revoke"
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact actor, e.g. admin_key or key:gate-1#3f9c…",
+              "title": "Actor"
+            },
+            "description": "Exact actor, e.g. admin_key or key:gate-1#3f9c…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuditEntry"
+                  },
+                  "title": "Response List Audit"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "x-required-scope": "admin"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiKey": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "prefix": {
+            "type": "string",
+            "title": "Prefix",
+            "description": "First characters of the token, to recognise it."
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "scopes",
+          "created_at",
+          "last_used_at",
+          "revoked_at"
+        ],
+        "title": "ApiKey"
+      },
+      "ApiKeyCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Name",
+            "examples": [
+              "gate-1-kiosk"
+            ]
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes",
+            "examples": [
+              [
+                "attendance"
+              ]
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "scopes"
+        ],
+        "title": "ApiKeyCreate"
+      },
+      "ApiKeyCreated": {
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/ApiKey"
+          },
+          "token": {
+            "type": "string",
+            "title": "Token",
+            "description": "Shown only once. Store it securely."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "token"
+        ],
+        "title": "ApiKeyCreated"
+      },
+      "AttendanceEvent": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "person_id": {
+            "type": "string",
+            "title": "Person Id"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "similarity": {
+            "type": "number",
+            "title": "Similarity"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp"
+          },
+          "day": {
+            "type": "string",
+            "title": "Day"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "person_id",
+          "external_id",
+          "name",
+          "similarity",
+          "device_id",
+          "timestamp",
+          "day"
+        ],
+        "title": "AttendanceEvent"
+      },
+      "AttendanceFace": {
+        "properties": {
+          "box": {
+            "$ref": "#/components/schemas/Box",
+            "description": "Bounding box in original image pixels."
+          },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "description": "Detector confidence, 0-1."
+          },
+          "landmarks": {
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "type": "array",
+            "title": "Landmarks",
+            "description": "Right eye, left eye, nose tip, right mouth corner, left mouth corner."
+          },
+          "match": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PersonMatch"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the face is unknown."
+          },
+          "unknown_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "too_small",
+                  "below_threshold",
+                  "ambiguous",
+                  "nobody_enrolled",
+                  "liveness_failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unknown Reason",
+            "description": "Why match is null: face too small, closest person below MATCH_THRESHOLD, two people too close to call (MATCH_MARGIN), or nobody enrolled."
+          },
+          "closest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PersonMatch"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "/recognize only, for testing and tuning: the nearest enrolled person when match is null. Never returned by /attendance, so kiosks don't reveal near-misses."
+          },
+          "liveness_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liveness Score",
+            "description": "Probability that the face is live (not a photo or screen). Set on /attendance when liveness is on, and on /recognize with ?liveness=true."
+          },
+          "attendance": {
+            "$ref": "#/components/schemas/AttendanceResult"
+          }
+        },
+        "type": "object",
+        "required": [
+          "box",
+          "score",
+          "landmarks",
+          "match",
+          "attendance"
+        ],
+        "title": "AttendanceFace"
+      },
+      "AttendanceResult": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "marked",
+              "already_marked",
+              "unknown",
+              "too_small",
+              "liveness_failed"
+            ],
+            "title": "Status"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp",
+            "description": "New event time, or the earlier event when already_marked."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "AttendanceResult"
+      },
+      "AttendanceSummary": {
+        "properties": {
+          "person_id": {
+            "type": "string",
+            "title": "Person Id"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "first_seen": {
+            "type": "string",
+            "title": "First Seen"
+          },
+          "last_seen": {
+            "type": "string",
+            "title": "Last Seen"
+          },
+          "events": {
+            "type": "integer",
+            "title": "Events"
+          }
+        },
+        "type": "object",
+        "required": [
+          "person_id",
+          "external_id",
+          "name",
+          "first_seen",
+          "last_seen",
+          "events"
+        ],
+        "title": "AttendanceSummary"
+      },
+      "AuditEntry": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "ts": {
+            "type": "number",
+            "title": "Ts"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "actor": {
+            "type": "string",
+            "title": "Actor"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "target_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Type"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ts",
+          "created_at",
+          "actor",
+          "action",
+          "target_type",
+          "target_id",
+          "details",
+          "ip",
+          "request_id"
+        ],
+        "title": "AuditEntry"
+      },
+      "Body_add_faces": {
+        "properties": {
+          "images": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream",
+              "format": "binary"
+            },
+            "type": "array",
+            "title": "Images",
+            "description": "1-10 photos: JPEG, PNG, WebP or BMP."
+          }
+        },
+        "type": "object",
+        "required": [
+          "images"
+        ],
+        "title": "Body_add_faces"
+      },
+      "Body_detect_faces": {
+        "properties": {
+          "image": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Image",
+            "description": "A photo: JPEG, PNG, WebP or BMP.",
+            "format": "binary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image"
+        ],
+        "title": "Body_detect_faces"
+      },
+      "Body_enroll_person": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Name",
+            "description": "Full name.",
+            "examples": [
+              "Asha Verma"
+            ]
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id",
+            "description": "Your system's ID for this person, e.g. employee code.",
+            "examples": [
+              "EMP-001"
+            ]
+          },
+          "images": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream",
+              "format": "binary"
+            },
+            "type": "array",
+            "title": "Images",
+            "description": "1-10 clear, front-facing photos."
+          },
+          "allow_duplicate": {
+            "type": "boolean",
+            "title": "Allow Duplicate",
+            "description": "Enroll even if the face resembles someone already enrolled (twins).",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "images"
+        ],
+        "title": "Body_enroll_person"
+      },
+      "Body_mark_attendance": {
+        "properties": {
+          "image": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Image",
+            "description": "A photo: JPEG, PNG, WebP or BMP.",
+            "format": "binary"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id",
+            "description": "Camera/kiosk identifier.",
+            "examples": [
+              "gate-1"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "image"
+        ],
+        "title": "Body_mark_attendance"
+      },
+      "Body_recognize_faces": {
+        "properties": {
+          "image": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Image",
+            "description": "A photo: JPEG, PNG, WebP or BMP.",
+            "format": "binary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image"
+        ],
+        "title": "Body_recognize_faces"
+      },
+      "Body_replace_faces": {
+        "properties": {
+          "images": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream",
+              "format": "binary"
+            },
+            "type": "array",
+            "title": "Images",
+            "description": "1-10 photos: JPEG, PNG, WebP or BMP."
+          },
+          "allow_duplicate": {
+            "type": "boolean",
+            "title": "Allow Duplicate",
+            "description": "Accept the photos even if they resemble someone else enrolled (twins).",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "images"
+        ],
+        "title": "Body_replace_faces"
+      },
+      "Box": {
+        "properties": {
+          "x": {
+            "type": "integer",
+            "title": "X"
+          },
+          "y": {
+            "type": "integer",
+            "title": "Y"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          }
+        },
+        "type": "object",
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "title": "Box"
+      },
+      "DetectResponse": {
+        "properties": {
+          "image": {
+            "$ref": "#/components/schemas/ImageSize"
+          },
+          "faces": {
+            "items": {
+              "$ref": "#/components/schemas/DetectedFace"
+            },
+            "type": "array",
+            "title": "Faces"
+          },
+          "processing_ms": {
+            "type": "number",
+            "title": "Processing Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image",
+          "faces",
+          "processing_ms"
+        ],
+        "title": "DetectResponse"
+      },
+      "DetectedFace": {
+        "properties": {
+          "box": {
+            "$ref": "#/components/schemas/Box",
+            "description": "Bounding box in original image pixels."
+          },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "description": "Detector confidence, 0-1."
+          },
+          "landmarks": {
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "type": "array",
+            "title": "Landmarks",
+            "description": "Right eye, left eye, nose tip, right mouth corner, left mouth corner."
+          }
+        },
+        "type": "object",
+        "required": [
+          "box",
+          "score",
+          "landmarks"
+        ],
+        "title": "DetectedFace"
+      },
+      "EnrollResponse": {
+        "properties": {
+          "person": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "accepted": {
+            "type": "integer",
+            "title": "Accepted"
+          },
+          "rejected": {
+            "items": {
+              "$ref": "#/components/schemas/RejectedImage"
+            },
+            "type": "array",
+            "title": "Rejected"
+          }
+        },
+        "type": "object",
+        "required": [
+          "person",
+          "accepted",
+          "rejected"
+        ],
+        "title": "EnrollResponse"
+      },
+      "ErrorBody": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "details": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorBody"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBody"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "title": "ErrorResponse"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "engine": {
+            "type": "string",
+            "title": "Engine"
+          },
+          "persons": {
+            "type": "integer",
+            "title": "Persons"
+          },
+          "embeddings": {
+            "type": "integer",
+            "title": "Embeddings"
+          },
+          "match_threshold": {
+            "type": "number",
+            "title": "Match Threshold"
+          },
+          "min_face_size": {
+            "type": "integer",
+            "title": "Min Face Size"
+          },
+          "liveness": {
+            "type": "boolean",
+            "title": "Liveness"
+          },
+          "auth_required": {
+            "type": "boolean",
+            "title": "Auth Required"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "version",
+          "engine",
+          "persons",
+          "embeddings",
+          "match_threshold",
+          "min_face_size",
+          "liveness",
+          "auth_required"
+        ],
+        "title": "Health"
+      },
+      "ImageSize": {
+        "properties": {
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          }
+        },
+        "type": "object",
+        "required": [
+          "width",
+          "height"
+        ],
+        "title": "ImageSize"
+      },
+      "MarkAttendanceResponse": {
+        "properties": {
+          "image": {
+            "$ref": "#/components/schemas/ImageSize"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          },
+          "faces": {
+            "items": {
+              "$ref": "#/components/schemas/AttendanceFace"
+            },
+            "type": "array",
+            "title": "Faces"
+          },
+          "processing_ms": {
+            "type": "number",
+            "title": "Processing Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image",
+          "device_id",
+          "faces",
+          "processing_ms"
+        ],
+        "title": "MarkAttendanceResponse"
+      },
+      "Person": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "face_count": {
+            "type": "integer",
+            "title": "Face Count"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "external_id",
+          "name",
+          "face_count",
+          "created_at"
+        ],
+        "title": "Person"
+      },
+      "PersonMatch": {
+        "properties": {
+          "person_id": {
+            "type": "string",
+            "title": "Person Id"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "similarity": {
+            "type": "number",
+            "title": "Similarity",
+            "description": "Cosine similarity to the closest enrolled face."
+          }
+        },
+        "type": "object",
+        "required": [
+          "person_id",
+          "external_id",
+          "name",
+          "similarity"
+        ],
+        "title": "PersonMatch"
+      },
+      "Point": {
+        "properties": {
+          "x": {
+            "type": "number",
+            "title": "X"
+          },
+          "y": {
+            "type": "number",
+            "title": "Y"
+          }
+        },
+        "type": "object",
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "Point"
+      },
+      "RecognizeResponse": {
+        "properties": {
+          "image": {
+            "$ref": "#/components/schemas/ImageSize"
+          },
+          "faces": {
+            "items": {
+              "$ref": "#/components/schemas/RecognizedFace"
+            },
+            "type": "array",
+            "title": "Faces"
+          },
+          "processing_ms": {
+            "type": "number",
+            "title": "Processing Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image",
+          "faces",
+          "processing_ms"
+        ],
+        "title": "RecognizeResponse"
+      },
+      "RecognizedFace": {
+        "properties": {
+          "box": {
+            "$ref": "#/components/schemas/Box",
+            "description": "Bounding box in original image pixels."
+          },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "description": "Detector confidence, 0-1."
+          },
+          "landmarks": {
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "type": "array",
+            "title": "Landmarks",
+            "description": "Right eye, left eye, nose tip, right mouth corner, left mouth corner."
+          },
+          "match": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PersonMatch"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the face is unknown."
+          },
+          "unknown_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "too_small",
+                  "below_threshold",
+                  "ambiguous",
+                  "nobody_enrolled",
+                  "liveness_failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unknown Reason",
+            "description": "Why match is null: face too small, closest person below MATCH_THRESHOLD, two people too close to call (MATCH_MARGIN), or nobody enrolled."
+          },
+          "closest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PersonMatch"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "/recognize only, for testing and tuning: the nearest enrolled person when match is null. Never returned by /attendance, so kiosks don't reveal near-misses."
+          },
+          "liveness_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liveness Score",
+            "description": "Probability that the face is live (not a photo or screen). Set on /attendance when liveness is on, and on /recognize with ?liveness=true."
+          }
+        },
+        "type": "object",
+        "required": [
+          "box",
+          "score",
+          "landmarks",
+          "match"
+        ],
+        "title": "RecognizedFace"
+      },
+      "RejectedImage": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "invalid_image",
+              "too_large",
+              "no_face",
+              "multiple_faces",
+              "face_too_small",
+              "inconsistent_identity",
+              "matches_other_person"
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "filename",
+          "reason"
+        ],
+        "title": "RejectedImage"
+      },
+      "WebhookDelivery": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "event": {
+            "type": "string",
+            "title": "Event"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "delivered",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "created_at": {
+            "type": "number",
+            "title": "Created At"
+          },
+          "delivered_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivered At"
+          },
+          "next_attempt_at": {
+            "type": "number",
+            "title": "Next Attempt At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "event_id",
+          "event",
+          "status",
+          "attempts",
+          "last_error",
+          "created_at",
+          "delivered_at",
+          "next_attempt_at"
+        ],
+        "title": "WebhookDelivery"
+      },
+      "WhoAmI": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "admin_key",
+              "key",
+              "open"
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "name",
+          "scopes"
+        ],
+        "title": "WhoAmI"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "The admin key (`API_KEY` setting) or a device key (`fm_…`). See docs/api-keys.md."
+      },
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The same key sent as `Authorization: Bearer <key>`."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "system",
+      "description": "Service info, health check and metrics."
+    },
+    {
+      "name": "auth",
+      "description": "Check which API key you are using and what it may do."
+    },
+    {
+      "name": "faces",
+      "description": "Detect and identify faces. Nothing is recorded."
+    },
+    {
+      "name": "persons",
+      "description": "Enroll, update and remove people and their photos."
+    },
+    {
+      "name": "attendance",
+      "description": "Mark attendance from camera frames and read it back."
+    },
+    {
+      "name": "admin",
+      "description": "API keys, webhook deliveries and the audit log (admin key only)."
+    }
+  ]
+}

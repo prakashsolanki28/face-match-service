@@ -70,6 +70,9 @@ curl -X POST localhost:8000/api/v1/recognize -H "X-API-Key: $API_KEY" -F image=@
 `external_id` is *your* ID for the person, such as an employee code or student number, so results map straight
 back to your records.
 
+**Prefer Postman or another API client?** Import the ready-made collection or the OpenAPI spec from
+[api/](api/README.md): every endpoint is set up with example values, file fields and your API key.
+
 ## Features
 
 | | |
@@ -89,6 +92,7 @@ back to your records.
 ## Documentation
 
 - [API reference](docs/api.md): endpoints, responses, error codes
+- [API files to import](api/README.md): Postman collection and OpenAPI spec for Postman, Insomnia, Bruno, Swagger and code generators
 - [Configuration](docs/configuration.md): every environment variable
 - [Deployment](docs/deployment.md): Docker, HTTPS, resources, backups
 - [Integrating with a portal](docs/integration.md): IDs, webhooks, bulk import, keeping photos up to date

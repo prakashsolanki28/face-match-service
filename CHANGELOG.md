@@ -19,8 +19,16 @@ FaceMatch is now an API-only service.
 ### Added
 - docs/api-keys.md: creating keys, scopes, recommended keys per client, Postman, rotation and revocation.
 - Keys created or revoked with the `face-match keys` command are now recorded in the audit log (actor `cli`).
+- api/: files to import the API into other tools: a Postman collection and environment (every endpoint with
+  example values, file fields, auth and saved ids) and `openapi.json`. They are also attached to each release.
+- `face-match export-api` regenerates them; `--check` reports when they are out of date.
+- The OpenAPI spec documents each endpoint's permission (`x-required-scope` and the description), Bearer auth,
+  file fields as `format: binary`, and every parameter.
 
 ### Changed
+- OpenAPI operation ids are now the route names (e.g. `enroll_person` instead of
+  `enroll_person_api_v1_persons_post`), and endpoints have short summaries. Regenerate API clients made from
+  1.x specs.
 - Interactive API docs (`/docs`, `/redoc`) are off by default; enable them with `API_DOCS=true`. The OpenAPI spec
   is always at `/openapi.json`, and `GET /` returns a small service description.
 - Tests use generated images and a model-free fake engine (`tests/fakes.py`) instead of photos of people. A

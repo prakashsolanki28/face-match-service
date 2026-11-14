@@ -8,6 +8,7 @@ import           bulk-enroll people from a CSV roster or photo folder
 evaluate         measure accuracy on a labelled photo set
 pilot-report     compare system attendance with a manual register
 loadtest         measure throughput and latency for capacity planning
+export-api       write openapi.json and a Postman collection for API clients
 """
 
 from __future__ import annotations
@@ -85,10 +86,17 @@ def main(argv: Optional[List[str]] = None) -> None:
         "pilot-report", help="Compare attendance with a manual register (see --help).", add_help=False
     )
     sub.add_parser("loadtest", help="Measure throughput and latency (see --help).", add_help=False)
+    sub.add_parser(
+        "export-api", help="Write openapi.json and a Postman collection (see --help).", add_help=False
+    )
 
     # These tools own their arguments; hand everything after the command to them.
-    if argv and argv[0] in ("import", "evaluate", "pilot-report", "loadtest"):
+    if argv and argv[0] in ("import", "evaluate", "pilot-report", "loadtest", "export-api"):
         command, rest = argv[0], argv[1:]
+        if command == "export-api":
+            from .tools import export_api
+
+            sys.exit(export_api.main(rest))
         if command == "import":
             from .tools import bulk_import
 

@@ -151,7 +151,7 @@ class ApiKey(BaseModel):
 
 
 class ApiKeyCreate(BaseModel):
-    name: str = Field(max_length=100, examples=["gate-1 kiosk"])
+    name: str = Field(max_length=100, examples=["gate-1-kiosk"])
     scopes: List[str] = Field(examples=[["attendance"]])
 
 

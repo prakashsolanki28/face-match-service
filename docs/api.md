@@ -1,7 +1,10 @@
 # API reference
 
-FaceMatch is API-only. The OpenAPI 3 specification is always at `/openapi.json` (generate clients from it).
+FaceMatch is API-only. The OpenAPI 3.1 specification is always at `/openapi.json` (generate clients from it).
 Interactive documentation pages (`/docs`, `/redoc`) are off by default; enable them with `API_DOCS=true`.
+
+**Import the API into your tool:** the [api/](../api/README.md) folder has a ready-to-send Postman collection
+and environment, plus `openapi.json`, for Postman, Insomnia, Bruno, Hoppscotch, Swagger and code generators.
 
 - All endpoints except `/health` and `/metrics` are under `/api/v1`. See [Authentication](#authentication).
 - Images are sent as `multipart/form-data` (JPEG, PNG, WebP or BMP, up to `MAX_UPLOAD_MB`). EXIF rotation is applied.

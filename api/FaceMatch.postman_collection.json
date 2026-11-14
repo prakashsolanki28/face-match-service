@@ -1,0 +1,815 @@
+{
+  "info": {
+    "_postman_id": "cd23b2df-6151-5bdf-b03c-9e063dcf9798",
+    "name": "FaceMatch API",
+    "description": "Every FaceMatch 2.0.0 endpoint, ready to send.\n\n1. Import `FaceMatch.postman_environment.json` too and select the **FaceMatch** environment. Set `baseUrl` to your server and `apiKey` to a key: a device key with only the scopes you need.\n2. Send **System → Health check**, then **Auth → Who am I** to check the key.\n3. For photos, open **Body → form-data** and choose a file in each `image` / `images` row.\n\nEnrolling a person or creating a key saves the new id in `personId` / `keyId`, so the requests that need an id work straight away. Each request says which permission it needs.\n\nKeys and permissions: https://github.com/prakashsolanki28/face-match-service/blob/main/docs/api-keys.md\n\nGenerated from the OpenAPI spec by `face-match export-api`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "X-API-Key",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{apiKey}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "System",
+      "description": "Service info, health check and metrics.",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Liveness/readiness probe: also checks that the database answers.\n\n**Permission:** none (public)."
+          },
+          "response": []
+        },
+        {
+          "name": "Prometheus metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "metrics"
+              ]
+            },
+            "description": "Prometheus metrics. Needs a key with the `metrics` scope when auth is on.\n\n**Permission:** an API key with the `metrics` scope (or the admin key)."
+          },
+          "response": []
+        },
+        {
+          "name": "Service info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": []
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Service identification for humans and load balancers.\n\n**Permission:** none (public)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "description": "Check which API key you are using and what it may do.",
+      "item": [
+        {
+          "name": "Who am I (check your key)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Which key this is and what it may do (useful to check a kiosk or integration key).\n\n**Permission:** any valid API key."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Faces",
+      "description": "Detect and identify faces. Nothing is recorded.",
+      "item": [
+        {
+          "name": "Detect faces",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/detect",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "detect"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": [],
+                  "description": "(Required) A photo: JPEG, PNG, WebP or BMP."
+                }
+              ]
+            },
+            "description": "Find faces in an image (no identity lookup).\n\n**Permission:** an API key with the `recognize` scope (or the admin key)."
+          },
+          "response": []
+        },
+        {
+          "name": "Recognize faces",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/recognize",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "recognize"
+              ],
+              "query": [
+                {
+                  "key": "liveness",
+                  "value": "false",
+                  "description": "Also return liveness_score for each face.",
+                  "disabled": true
+                }
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": [],
+                  "description": "(Required) A photo: JPEG, PNG, WebP or BMP."
+                }
+              ]
+            },
+            "description": "Find faces and identify enrolled people. Does not record anything.\n\n**Permission:** an API key with the `recognize` scope (or the admin key)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Persons",
+      "description": "Enroll, update and remove people and their photos.",
+      "item": [
+        {
+          "name": "Enroll a person",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/persons",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "persons"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "value": "Asha Verma",
+                  "description": "(Required) Full name.",
+                  "type": "text"
+                },
+                {
+                  "key": "external_id",
+                  "value": "EMP-001",
+                  "description": "Your system's ID for this person, e.g. employee code.",
+                  "type": "text"
+                },
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": [],
+                  "description": "(Required) 1-10 clear, front-facing photos. Add one row per photo."
+                },
+                {
+                  "key": "allow_duplicate",
+                  "value": "false",
+                  "description": "Enroll even if the face resembles someone already enrolled (twins).",
+                  "disabled": true,
+                  "type": "text"
+                }
+              ]
+            },
+            "description": "Enroll a person. 3-5 photos (slightly different angles/lighting) give the best accuracy.\n\n**Permission:** an API key with the `enroll` scope (or the admin key)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Saves the new id in the collection variable `personId` for the next requests.",
+                  "if (pm.response.code === 201) {",
+                  "    pm.collectionVariables.set(\"personId\", pm.response.json().person.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List people",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/persons",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "persons"
+              ],
+              "query": [
+                {
+                  "key": "external_id",
+                  "value": "EMP-001",
+                  "description": "Look up one person by your system's ID.",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "",
+                  "description": "Page size (default: everyone).",
+                  "disabled": true
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Skip this many results (for paging).",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "People sorted by name. `X-Total-Count` holds the total for paging.\n\n**Permission:** an API key with the `read` scope (or the admin key)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get a person",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/persons/:person_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "persons",
+                ":person_id"
+              ],
+              "variable": [
+                {
+                  "key": "person_id",
+                  "value": "{{personId}}",
+                  "description": "The person's id, returned when they were enrolled."
+                }
+              ]
+            },
+            "description": "One person, by the id returned at enrollment.\n\n**Permission:** an API key with the `read` scope (or the admin key)."
+          },
+          "response": []
+        },
+        {
+          "name": "Add photos to a person",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/persons/:person_id/faces",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "persons",
+                ":person_id",
+                "faces"
+              ],
+              "variable": [
+                {
+                  "key": "person_id",
+                  "value": "{{personId}}",
+                  "description": "The person's id, returned when they were enrolled."
+                }
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": [],
+                  "description": "(Required) 1-10 photos: JPEG, PNG, WebP or BMP. Add one row per photo."
+                }
+              ]
+            },
+            "description": "Add more photos to an existing person to improve recognition.\n\n**Permission:** an API key with the `enroll` scope (or the admin key)."
+          },
+          "response": []
+        },
+        {
+          "name": "Replace a person's photos",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/persons/:person_id/faces",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "persons",
+                ":person_id",
+                "faces"
+              ],
+              "variable": [
+                {
+                  "key": "person_id",
+                  "value": "{{personId}}",
+                  "description": "The person's id, returned when they were enrolled."
+                }
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": [],
+                  "description": "(Required) 1-10 photos: JPEG, PNG, WebP or BMP. Add one row per photo."
+                },
+                {
+                  "key": "allow_duplicate",
+                  "value": "false",
+                  "description": "Accept the photos even if they resemble someone else enrolled (twins).",
+                  "disabled": true,
+                  "type": "text"
+                }
+              ]
+            },
+            "description": "Replace all photos of a person (e.g. new school-year photos).\n\nAll-or-nothing: if none of the new photos is usable, the current photos are kept.\n\n**Permission:** an API key with the `enroll` scope (or the admin key)."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete a person",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/persons/:person_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "persons",
+                ":person_id"
+              ],
+              "query": [
+                {
+                  "key": "erase_history",
+                  "value": "false",
+                  "description": "Also delete the person's attendance events and queued webhooks (right to erasure).",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "person_id",
+                  "value": "{{personId}}",
+                  "description": "The person's id, returned when they were enrolled."
+                }
+              ]
+            },
+            "description": "Delete a person and their face data. Attendance history is kept unless erase_history=true.\n\n**Permission:** an API key with the `enroll` scope (or the admin key)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Attendance",
+      "description": "Mark attendance from camera frames and read it back.",
+      "item": [
+        {
+          "name": "Mark attendance",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/attendance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "attendance"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": [],
+                  "description": "(Required) A photo: JPEG, PNG, WebP or BMP."
+                },
+                {
+                  "key": "device_id",
+                  "value": "gate-1",
+                  "description": "Camera/kiosk identifier.",
+                  "type": "text"
+                }
+              ]
+            },
+            "description": "Recognise everyone in the frame and record attendance.\n\nRepeat sightings within ATTENDANCE_COOLDOWN_SECONDS return `already_marked`. With liveness on,\na face that looks like a photo or screen returns `liveness_failed` and is not recorded.\n\n**Permission:** an API key with the `attendance` scope (or the admin key)."
+          },
+          "response": []
+        },
+        {
+          "name": "List attendance events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/attendance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "attendance"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2026-01-15",
+                  "description": "YYYY-MM-DD; omit for all days.",
+                  "disabled": true
+                },
+                {
+                  "key": "person_id",
+                  "value": "",
+                  "description": "Only this person's events.",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "200",
+                  "description": "Page size.",
+                  "disabled": true
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Skip this many results (for paging).",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Raw attendance events, newest first.\n\n**Permission:** an API key with the `read` scope (or the admin key)."
+          },
+          "response": []
+        },
+        {
+          "name": "Daily attendance summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/attendance/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "attendance",
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2026-01-15",
+                  "description": "YYYY-MM-DD; defaults to today.",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "One row per person for the day: first seen (check-in), last seen (check-out).\n\n**Permission:** an API key with the `read` scope (or the admin key)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "description": "API keys, webhook deliveries and the audit log (admin key only).",
+      "item": [
+        {
+          "name": "List API keys",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "keys"
+              ]
+            },
+            "description": "All API keys, active and revoked. Tokens are never returned.\n\n**Permission:** an API key with the `admin` scope (or the admin key)."
+          },
+          "response": []
+        },
+        {
+          "name": "Create an API key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "keys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"gate-1-kiosk\",\n  \"scopes\": [\n    \"attendance\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Create a scoped API key, e.g. `{\"name\": \"gate-1\", \"scopes\": [\"attendance\"]}` for a kiosk.\n\nThe token is returned only once.\n\n**Permission:** an API key with the `admin` scope (or the admin key)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Saves the new id in the collection variable `keyId` for the next requests.",
+                  "if (pm.response.code === 201) {",
+                  "    pm.collectionVariables.set(\"keyId\", pm.response.json().key.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List webhook deliveries",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/webhooks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "Only this status: pending, delivered or failed.",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "100",
+                  "description": "Page size.",
+                  "disabled": true
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Skip this many results (for paging).",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Webhook delivery queue, newest first. Failed deliveries can be retried.\n\n**Permission:** an API key with the `admin` scope (or the admin key)."
+          },
+          "response": []
+        },
+        {
+          "name": "Retry a webhook delivery",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/webhooks/:delivery_id/retry",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                ":delivery_id",
+                "retry"
+              ],
+              "variable": [
+                {
+                  "key": "delivery_id",
+                  "value": "{{deliveryId}}",
+                  "description": "The delivery's id, from GET /webhooks."
+                }
+              ]
+            },
+            "description": "Send a failed webhook delivery again.\n\n**Permission:** an API key with the `admin` scope (or the admin key)."
+          },
+          "response": []
+        },
+        {
+          "name": "Audit log",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/audit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "audit"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100",
+                  "description": "Page size.",
+                  "disabled": true
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Skip this many results (for paging).",
+                  "disabled": true
+                },
+                {
+                  "key": "action",
+                  "value": "",
+                  "description": "Filter, e.g. person.* or key.revoke",
+                  "disabled": true
+                },
+                {
+                  "key": "actor",
+                  "value": "",
+                  "description": "Exact actor, e.g. admin_key or key:gate-1#3f9c…",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Who changed what: enrollments, photo changes, deletions, keys, webhook retries. Newest first.\n\n**Permission:** an API key with the `admin` scope (or the admin key)."
+          },
+          "response": []
+        },
+        {
+          "name": "Revoke an API key",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/keys/:key_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "keys",
+                ":key_id"
+              ],
+              "variable": [
+                {
+                  "key": "key_id",
+                  "value": "{{keyId}}",
+                  "description": "The key's id."
+                }
+              ]
+            },
+            "description": "Revoke a key immediately.\n\n**Permission:** an API key with the `admin` scope (or the admin key)."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "description": "Your FaceMatch server."
+    },
+    {
+      "key": "personId",
+      "value": "",
+      "description": "Set by earlier requests, or by hand."
+    },
+    {
+      "key": "keyId",
+      "value": "",
+      "description": "Set by earlier requests, or by hand."
+    },
+    {
+      "key": "deliveryId",
+      "value": "",
+      "description": "Set by earlier requests, or by hand."
+    }
+  ]
+}

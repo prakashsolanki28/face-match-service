@@ -167,14 +167,15 @@ curl https://face.example.com/api/v1/auth/me -H "Authorization: Bearer fm_..."
 
 ### Postman
 
-1. **Environments → +**: add `baseUrl` (e.g. `https://face.example.com`) and `apiKey` with type **secret**.
-   Put the key in **Current value** only, which stays on your computer and isn't synced.
-2. **Import → Link**: `{{baseUrl}}/openapi.json` (or the file). Postman creates a collection with every endpoint.
-3. Collection → **Authorization**: type **API Key**, key `X-API-Key`, value `{{apiKey}}`, add to **Header**.
-4. For photo uploads use **Body → form-data** and set the field type to **File** (`image`, or `images` for
-   enrollment; add several `images` rows for several photos).
+1. **Import** the ready-made files from [api/](../api/README.md): `FaceMatch.postman_collection.json` and
+   `FaceMatch.postman_environment.json` (drop in the files, or paste their GitHub links).
+2. Select the **FaceMatch** environment and set `baseUrl` (e.g. `https://face.example.com`) and `apiKey`. The
+   `apiKey` variable is a **secret**, so it's masked on screen.
+3. Send **Auth → Who am I** to check the key. Every request already sends `X-API-Key: {{apiKey}}`.
+4. For photos, open **Body → form-data** and choose a file in each `image` / `images` row.
 
-Use a limited device key in Postman, not the admin key. Keep separate environments for test and live.
+Use a limited device key in Postman, not the admin key. Keep separate environments for test and live. The same
+files import into Insomnia, Bruno, Hoppscotch and Thunder Client; see [api/README.md](../api/README.md).
 
 ---
 

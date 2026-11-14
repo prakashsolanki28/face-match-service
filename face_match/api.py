@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import date
-from typing import Iterator, List, Literal, Optional
+from typing import Annotated, Iterator, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, Path, Query, Request, Response, UploadFile
 from fastapi.security import APIKeyHeader
 
 from .observability import request_id_var
@@ -90,6 +90,7 @@ def require(scope: str):
             raise ServiceError(403, "forbidden", f"This API key lacks the '{scope}' permission.")
         return principal
 
+    check.required_scope = scope  # read by openapi.py to document each endpoint's permission
     return Depends(check)
 
 
@@ -138,15 +139,29 @@ def _check_count(images: List[UploadFile]) -> None:
 
 _errors = {code: {"model": ErrorResponse} for code in (400, 401, 403, 413, 422, 429, 503)}
 
+# Shared parameter descriptions (they appear in /openapi.json and the Postman collection).
+_PHOTO = "A photo: JPEG, PNG, WebP or BMP."
+_PHOTOS = "1-10 photos: JPEG, PNG, WebP or BMP."
+PersonId = Annotated[str, Path(description="The person's id, returned when they were enrolled.")]
+Offset = Annotated[int, Query(ge=0, description="Skip this many results (for paging).")]
+
 router = APIRouter(prefix="/api/v1", responses=_errors)
 
 
 # ---- faces -------------------------------------------------------------------
 
 
-@router.post("/detect", response_model=DetectResponse, tags=["faces"], dependencies=[require("recognize")])
+@router.post(
+    "/detect",
+    summary="Detect faces",
+    response_model=DetectResponse,
+    tags=["faces"],
+    dependencies=[require("recognize")],
+)
 def detect_faces(
-    request: Request, image: UploadFile = File(...), service: FaceService = Depends(get_service)
+    request: Request,
+    image: UploadFile = File(..., description=_PHOTO),
+    service: FaceService = Depends(get_service),
 ):
     """Find faces in an image (no identity lookup)."""
     with image_slot(request):
@@ -154,11 +169,15 @@ def detect_faces(
 
 
 @router.post(
-    "/recognize", response_model=RecognizeResponse, tags=["faces"], dependencies=[require("recognize")]
+    "/recognize",
+    summary="Recognize faces",
+    response_model=RecognizeResponse,
+    tags=["faces"],
+    dependencies=[require("recognize")],
 )
 def recognize_faces(
     request: Request,
-    image: UploadFile = File(...),
+    image: UploadFile = File(..., description=_PHOTO),
     liveness: bool = Query(False, description="Also return liveness_score for each face."),
     service: FaceService = Depends(get_service),
 ):
@@ -172,6 +191,7 @@ def recognize_faces(
 
 @router.post(
     "/persons",
+    summary="Enroll a person",
     response_model=EnrollResponse,
     status_code=201,
     tags=["persons"],
@@ -180,9 +200,12 @@ def recognize_faces(
 )
 def enroll_person(
     request: Request,
-    name: str = Form(..., max_length=200),
+    name: str = Form(..., max_length=200, description="Full name.", examples=["Asha Verma"]),
     external_id: Optional[str] = Form(
-        None, max_length=200, description="Your system's ID for this person, e.g. employee code."
+        None,
+        max_length=200,
+        description="Your system's ID for this person, e.g. employee code.",
+        examples=["EMP-001"],
     ),
     images: List[UploadFile] = File(..., description="1-10 clear, front-facing photos."),
     allow_duplicate: bool = Form(
@@ -206,12 +229,20 @@ def enroll_person(
     return result
 
 
-@router.get("/persons", response_model=List[Person], tags=["persons"], dependencies=[require("read")])
+@router.get(
+    "/persons",
+    summary="List people",
+    response_model=List[Person],
+    tags=["persons"],
+    dependencies=[require("read")],
+)
 def list_persons(
     response: Response,
-    external_id: Optional[str] = Query(None, description="Look up one person by your system's ID."),
+    external_id: Optional[str] = Query(
+        None, description="Look up one person by your system's ID.", examples=["EMP-001"]
+    ),
     limit: Optional[int] = Query(None, ge=1, le=10000, description="Page size (default: everyone)."),
-    offset: int = Query(0, ge=0),
+    offset: Offset = 0,
     service: FaceService = Depends(get_service),
 ):
     """People sorted by name. `X-Total-Count` holds the total for paging."""
@@ -221,13 +252,21 @@ def list_persons(
     return [service._person(r) for r in service.db.list_persons(limit, offset)]
 
 
-@router.get("/persons/{person_id}", response_model=Person, tags=["persons"], dependencies=[require("read")])
-def get_person(person_id: str, service: FaceService = Depends(get_service)):
+@router.get(
+    "/persons/{person_id}",
+    summary="Get a person",
+    response_model=Person,
+    tags=["persons"],
+    dependencies=[require("read")],
+)
+def get_person(person_id: PersonId, service: FaceService = Depends(get_service)):
+    """One person, by the id returned at enrollment."""
     return service.get_person(person_id)
 
 
 @router.post(
     "/persons/{person_id}/faces",
+    summary="Add photos to a person",
     response_model=EnrollResponse,
     tags=["persons"],
     responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
@@ -235,8 +274,8 @@ def get_person(person_id: str, service: FaceService = Depends(get_service)):
 )
 def add_faces(
     request: Request,
-    person_id: str,
-    images: List[UploadFile] = File(...),
+    person_id: PersonId,
+    images: List[UploadFile] = File(..., description=_PHOTOS),
     service: FaceService = Depends(get_service),
 ):
     """Add more photos to an existing person to improve recognition."""
@@ -249,6 +288,7 @@ def add_faces(
 
 @router.put(
     "/persons/{person_id}/faces",
+    summary="Replace a person's photos",
     response_model=EnrollResponse,
     tags=["persons"],
     responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
@@ -256,9 +296,11 @@ def add_faces(
 )
 def replace_faces(
     request: Request,
-    person_id: str,
-    images: List[UploadFile] = File(...),
-    allow_duplicate: bool = Form(False),
+    person_id: PersonId,
+    images: List[UploadFile] = File(..., description=_PHOTOS),
+    allow_duplicate: bool = Form(
+        False, description="Accept the photos even if they resemble someone else enrolled (twins)."
+    ),
     service: FaceService = Depends(get_service),
 ):
     """Replace all photos of a person (e.g. new school-year photos).
@@ -276,6 +318,7 @@ def replace_faces(
 
 @router.delete(
     "/persons/{person_id}",
+    summary="Delete a person",
     status_code=204,
     tags=["persons"],
     responses={404: {"model": ErrorResponse}},
@@ -283,7 +326,7 @@ def replace_faces(
 )
 def delete_person(
     request: Request,
-    person_id: str,
+    person_id: PersonId,
     erase_history: bool = Query(
         False,
         description="Also delete the person's attendance events and queued webhooks (right to erasure).",
@@ -308,14 +351,17 @@ def delete_person(
 
 @router.post(
     "/attendance",
+    summary="Mark attendance",
     response_model=MarkAttendanceResponse,
     tags=["attendance"],
     dependencies=[require("attendance")],
 )
 def mark_attendance(
     request: Request,
-    image: UploadFile = File(...),
-    device_id: Optional[str] = Form(None, max_length=100, description="Camera/kiosk identifier."),
+    image: UploadFile = File(..., description=_PHOTO),
+    device_id: Optional[str] = Form(
+        None, max_length=100, description="Camera/kiosk identifier.", examples=["gate-1"]
+    ),
     service: FaceService = Depends(get_service),
 ):
     """Recognise everyone in the frame and record attendance.
@@ -329,13 +375,19 @@ def mark_attendance(
 
 
 @router.get(
-    "/attendance", response_model=List[AttendanceEvent], tags=["attendance"], dependencies=[require("read")]
+    "/attendance",
+    summary="List attendance events",
+    response_model=List[AttendanceEvent],
+    tags=["attendance"],
+    dependencies=[require("read")],
 )
 def list_attendance(
-    day: Optional[date] = Query(None, alias="date", description="YYYY-MM-DD; omit for all days."),
-    person_id: Optional[str] = None,
-    limit: int = Query(200, ge=1, le=5000),
-    offset: int = Query(0, ge=0),
+    day: Optional[date] = Query(
+        None, alias="date", description="YYYY-MM-DD; omit for all days.", examples=["2026-01-15"]
+    ),
+    person_id: Optional[str] = Query(None, description="Only this person's events."),
+    limit: int = Query(200, ge=1, le=5000, description="Page size."),
+    offset: Offset = 0,
     service: FaceService = Depends(get_service),
 ):
     """Raw attendance events, newest first."""
@@ -344,12 +396,15 @@ def list_attendance(
 
 @router.get(
     "/attendance/summary",
+    summary="Daily attendance summary",
     response_model=List[AttendanceSummary],
     tags=["attendance"],
     dependencies=[require("read")],
 )
 def attendance_summary(
-    day: Optional[date] = Query(None, alias="date", description="YYYY-MM-DD; defaults to today."),
+    day: Optional[date] = Query(
+        None, alias="date", description="YYYY-MM-DD; defaults to today.", examples=["2026-01-15"]
+    ),
     service: FaceService = Depends(get_service),
 ):
     """One row per person for the day: first seen (check-in), last seen (check-out)."""
@@ -364,7 +419,12 @@ def _key(row) -> ApiKey:
 
 
 @router.post(
-    "/keys", response_model=ApiKeyCreated, status_code=201, tags=["admin"], dependencies=[require("admin")]
+    "/keys",
+    summary="Create an API key",
+    response_model=ApiKeyCreated,
+    status_code=201,
+    tags=["admin"],
+    dependencies=[require("admin")],
 )
 def create_key(body: ApiKeyCreate, request: Request, service: FaceService = Depends(get_service)):
     """Create a scoped API key, e.g. `{"name": "gate-1", "scopes": ["attendance"]}` for a kiosk.
@@ -377,13 +437,30 @@ def create_key(body: ApiKeyCreate, request: Request, service: FaceService = Depe
     return ApiKeyCreated(key=_key(row), token=token)
 
 
-@router.get("/keys", response_model=List[ApiKey], tags=["admin"], dependencies=[require("admin")])
+@router.get(
+    "/keys",
+    summary="List API keys",
+    response_model=List[ApiKey],
+    tags=["admin"],
+    dependencies=[require("admin")],
+)
 def list_keys(service: FaceService = Depends(get_service)):
+    """All API keys, active and revoked. Tokens are never returned."""
     return [_key(r) for r in service.db.list_api_keys()]
 
 
-@router.delete("/keys/{key_id}", status_code=204, tags=["admin"], dependencies=[require("admin")])
-def revoke_key(key_id: str, request: Request, service: FaceService = Depends(get_service)):
+@router.delete(
+    "/keys/{key_id}",
+    summary="Revoke an API key",
+    status_code=204,
+    tags=["admin"],
+    dependencies=[require("admin")],
+)
+def revoke_key(
+    key_id: Annotated[str, Path(description="The key's id.")],
+    request: Request,
+    service: FaceService = Depends(get_service),
+):
     """Revoke a key immediately."""
     service.revoke_api_key(key_id)
     request.app.state.keys.invalidate()
@@ -395,12 +472,18 @@ def revoke_key(key_id: str, request: Request, service: FaceService = Depends(get
 
 
 @router.get(
-    "/webhooks", response_model=List[WebhookDelivery], tags=["admin"], dependencies=[require("admin")]
+    "/webhooks",
+    summary="List webhook deliveries",
+    response_model=List[WebhookDelivery],
+    tags=["admin"],
+    dependencies=[require("admin")],
 )
 def list_webhooks(
-    status: Optional[Literal["pending", "delivered", "failed"]] = None,
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
+    status: Optional[Literal["pending", "delivered", "failed"]] = Query(
+        None, description="Only this status: pending, delivered or failed."
+    ),
+    limit: int = Query(100, ge=1, le=1000, description="Page size."),
+    offset: Offset = 0,
     service: FaceService = Depends(get_service),
 ):
     """Webhook delivery queue, newest first. Failed deliveries can be retried."""
@@ -408,9 +491,18 @@ def list_webhooks(
 
 
 @router.post(
-    "/webhooks/{delivery_id}/retry", status_code=202, tags=["admin"], dependencies=[require("admin")]
+    "/webhooks/{delivery_id}/retry",
+    summary="Retry a webhook delivery",
+    status_code=202,
+    tags=["admin"],
+    dependencies=[require("admin")],
 )
-def retry_webhook(delivery_id: int, request: Request, service: FaceService = Depends(get_service)):
+def retry_webhook(
+    delivery_id: Annotated[int, Path(description="The delivery's id, from GET /webhooks.")],
+    request: Request,
+    service: FaceService = Depends(get_service),
+):
+    """Send a failed webhook delivery again."""
     service.retry_webhook(delivery_id)
     audit(request, "webhook.retry", "webhook", str(delivery_id))
     return Response(status_code=202)
@@ -419,7 +511,7 @@ def retry_webhook(delivery_id: int, request: Request, service: FaceService = Dep
 # ---- identity ---------------------------------------------------------------------------------
 
 
-@router.get("/auth/me", response_model=WhoAmI, tags=["auth"])
+@router.get("/auth/me", summary="Who am I (check your key)", response_model=WhoAmI, tags=["auth"])
 def whoami(principal: Principal = Depends(authenticate)):
     """Which key this is and what it may do (useful to check a kiosk or integration key)."""
     return WhoAmI(kind=principal.kind, name=principal.name, scopes=sorted(principal.scopes))
@@ -428,10 +520,16 @@ def whoami(principal: Principal = Depends(authenticate)):
 # ---- admin: audit log ------------------------------------------------------------------------
 
 
-@router.get("/audit", response_model=List[AuditEntry], tags=["admin"], dependencies=[require("admin")])
+@router.get(
+    "/audit",
+    summary="Audit log",
+    response_model=List[AuditEntry],
+    tags=["admin"],
+    dependencies=[require("admin")],
+)
 def list_audit(
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000, description="Page size."),
+    offset: Offset = 0,
     action: Optional[str] = Query(None, description="Filter, e.g. person.* or key.revoke"),
     actor: Optional[str] = Query(None, description="Exact actor, e.g. admin_key or key:gate-1#3f9c…"),
     service: FaceService = Depends(get_service),

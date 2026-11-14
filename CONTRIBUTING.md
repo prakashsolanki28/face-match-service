@@ -19,6 +19,7 @@ Python 3.11 or newer is required (patched FastAPI/Starlette releases need it). N
 
 - `make lint` and `make test` pass. CI runs the same checks on Python 3.11, 3.12 and 3.13, audits dependencies, runs CodeQL, and builds and scans the Docker image.
 - New behaviour has a test. API changes keep `/api/v1` backwards compatible. Breaking changes need a new API version.
+- After changing the API, run `face-match export-api` and commit the updated `api/` files (the tests check them).
 - **Changes to recognition logic** (thresholds, enrollment checks, models) must come with evidence. Run
   `face-match evaluate` on a labelled photo set before and after, and paste both results into the PR.
   The service's promise is *no wrong names*: a change that adds wrong-name errors won't be merged.
@@ -36,6 +37,7 @@ Python 3.11 or newer is required (patched FastAPI/Starlette releases need it). N
 face_match/
   cli.py          `face-match` command (serve, download-models, import, evaluate)
   main.py         FastAPI app factory: wiring, error handlers, CORS
+  openapi.py      the OpenAPI spec: permissions per endpoint, auth schemes, file fields
   api.py          /api/v1 routes and API-key auth
   service.py      business rules: enrollment checks, matching, attendance
   engine.py       FaceEngine interface + OpenCV YuNet/SFace implementation
@@ -49,7 +51,8 @@ face_match/
   liveness.py     MiniFASNet anti-spoofing
   observability.py  metrics, request ids, JSON logs
   maintenance.py  backups, retention, periodic workers
-  tools/          bulk_import.py (stdlib only), evaluate.py, pilot_report.py, loadtest.py
+  tools/          bulk_import.py (stdlib only), evaluate.py, pilot_report.py, loadtest.py, export_api.py
+api/              openapi.json and the Postman collection/environment (generated: face-match export-api)
 tests/            API, production, multi-server, bulk-import and model smoke tests (fakes.py: model-free engine)
 docs/             user documentation
 ```
