@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import shutil
 import tempfile
 import urllib.request
@@ -61,6 +62,11 @@ def _download(model: ModelFile, target: Path) -> None:
     if actual != model.sha256:
         tmp_path.unlink(missing_ok=True)
         raise RuntimeError(f"Checksum mismatch for {model.filename}: expected {model.sha256}, got {actual}")
+    # Temp files are created owner-only (0600). Models are public data and are often downloaded by one
+    # user (e.g. root during `docker build`) and read by another, so apply normal file permissions.
+    umask = os.umask(0)
+    os.umask(umask)
+    tmp_path.chmod(0o666 & ~umask)
     tmp_path.replace(target)
 
 
