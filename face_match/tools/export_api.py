@@ -161,13 +161,10 @@ def _body(spec: Dict[str, Any], op: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             if _is_file(prop):
                 note = " Add one row per photo." if prop.get("type") == "array" else ""
                 description = (prop.get("description", "") + note).strip()
+                # No "src": an empty list makes Postman keep a blank entry next to the chosen file,
+                # which it then reads as a folder (EISDIR). Postman's own importer leaves it out too.
                 fields.append(
-                    {
-                        "key": name,
-                        "type": "file",
-                        "src": [],
-                        "description": f"(Required) {description}".strip(),
-                    }
+                    {"key": name, "type": "file", "description": f"(Required) {description}".strip()}
                 )
             else:
                 fields.append({**_field(name, prop, name in required), "type": "text"})

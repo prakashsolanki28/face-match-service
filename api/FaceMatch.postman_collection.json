@@ -143,7 +143,6 @@
                 {
                   "key": "image",
                   "type": "file",
-                  "src": [],
                   "description": "(Required) A photo: JPEG, PNG, WebP or BMP."
                 }
               ]
@@ -182,7 +181,6 @@
                 {
                   "key": "image",
                   "type": "file",
-                  "src": [],
                   "description": "(Required) A photo: JPEG, PNG, WebP or BMP."
                 }
               ]
@@ -231,7 +229,6 @@
                 {
                   "key": "images",
                   "type": "file",
-                  "src": [],
                   "description": "(Required) 1-10 clear, front-facing photos. Add one row per photo."
                 },
                 {
@@ -360,7 +357,6 @@
                 {
                   "key": "images",
                   "type": "file",
-                  "src": [],
                   "description": "(Required) 1-10 photos: JPEG, PNG, WebP or BMP. Add one row per photo."
                 }
               ]
@@ -400,7 +396,6 @@
                 {
                   "key": "images",
                   "type": "file",
-                  "src": [],
                   "description": "(Required) 1-10 photos: JPEG, PNG, WebP or BMP. Add one row per photo."
                 },
                 {
@@ -480,7 +475,6 @@
                 {
                   "key": "image",
                   "type": "file",
-                  "src": [],
                   "description": "(Required) A photo: JPEG, PNG, WebP or BMP."
                 },
                 {
