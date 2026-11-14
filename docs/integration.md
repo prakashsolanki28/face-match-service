@@ -133,5 +133,5 @@ const res = await fetch("https://face.example.com/api/v1/recognize", {
 const { faces } = await res.json();
 ```
 
-Don't put the API key in public browser code. Call FaceMatch from your backend, or from a kiosk you control, and
-give every client its own key with only the scopes it needs (see [api.md](api.md#authentication)).
+Don't put the API key in public browser code: it gives full access. Call FaceMatch from your backend, or from a
+kiosk you control (see [api-keys.md](api-keys.md)).

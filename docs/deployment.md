@@ -55,19 +55,11 @@ face.example.com {
 }
 ```
 
-## Kiosks and integrations: one key each
+## Kiosks and integrations
 
-Never put the admin `API_KEY` on a kiosk. Create a key per device with only the permission it needs, so a lost
-tablet can be revoked without touching anything else:
-
-```bash
-face-match keys create --name "gate-1 kiosk" --scopes attendance      # kiosk: can only mark attendance
-face-match keys create --name "portal sync" --scopes read,enroll      # your portal's backend
-face-match keys create --name prometheus --scopes metrics             # monitoring
-face-match keys revoke <id>                                           # lost device
-```
-
-(Inside Docker: `docker exec face-match face-match keys create ...`.)
+Every client (your portal's backend, each kiosk, monitoring) uses the same `API_KEY`, which gives full access.
+Keep it on devices you control, lock kiosks down, and change the key on the server and every client if a device
+is lost (see [api-keys.md](api-keys.md#3-change-rotate-the-key)).
 
 ## Monitoring
 
@@ -80,7 +72,7 @@ rate-limited requests, backup runs, enrolled people, and process memory.
 scrape_configs:
   - job_name: face-match
     authorization:
-      credentials: fm_...            # a key with the "metrics" scope
+      credentials_file: /etc/prometheus/facematch-api-key   # file holding the API key
     static_configs:
       - targets: ["face-match:8000"]
 ```

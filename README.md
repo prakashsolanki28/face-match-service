@@ -12,8 +12,8 @@ Built-in attendance logging, bulk import and signed webhooks cover the common "w
   no compiler, and no database server required (SQLite by default, PostgreSQL for several servers).
 - **Safe by design:** it refuses to guess between look-alikes, tells you *why* a face is unknown, rejects photos
   and screens held up to the camera (liveness), and stores embeddings rather than photos.
-- **API only:** no built-in UI. Your portal, kiosks and apps integrate over REST with scoped API keys.
-- **Production features:** per-device API keys, an audit log, rate limiting, webhooks that retry until delivered,
+- **API only:** no built-in UI. Your portal, kiosks and apps integrate over REST with one API key.
+- **Production features:** an audit log, rate limiting, webhooks that retry until delivered,
   Prometheus metrics, JSON logs, backups, retention, right to erasure, and several servers sharing PostgreSQL.
 - **Commercially usable:** Apache-2.0 code, with permissively licensed models (YuNet: MIT, SFace: Apache-2.0).
 - **Measured:** 97.9% correct with 5 photos per person and **no wrong names** on a 31-person, 2,500-photo
@@ -81,8 +81,8 @@ back to your records.
 | **Matching** | 1:N identification against everyone enrolled (`/recognize`), with a reason for every unknown face |
 | **Enrollment** | Create, add or replace photos. Quality checks reject photos with no face, several faces, a face too small, inconsistent photos or duplicates |
 | **Attendance** | `/attendance` logs check-ins, with liveness (anti-spoofing), a cooldown, daily present/absent summary and webhooks that retry until delivered |
-| **Security** | Admin key plus scoped device keys (a kiosk key can only mark attendance), audit log, rate limiting, overload protection, secure defaults |
-| **Kiosks** | Any camera app can be a kiosk: send frames to `/api/v1/attendance` with an attendance-only key (sample client in the docs) |
+| **Security** | One API key for the whole API, audit log, rate limiting per client IP, overload protection, secure defaults |
+| **Kiosks** | Any camera app can be a kiosk: send frames to `/api/v1/attendance` with the API key (sample client in the docs) |
 | **Scale** | One server handles about 25–35 kiosks; add servers behind a load balancer with PostgreSQL (`DATABASE_URL`) |
 | **Operations** | Prometheus `/metrics`, JSON logs with request ids, automatic backups, retention, `face-match pilot-report` for go-live validation |
 | **Bulk import** | `face-match import` enrolls hundreds of people from a CSV roster and photo folder, with a report |
@@ -98,7 +98,7 @@ back to your records.
 - [Integrating with a portal](docs/integration.md): IDs, webhooks, bulk import, keeping photos up to date
 - [Attendance guide](docs/attendance.md): schools and offices with hundreds of people
 - [Pilot guide](docs/pilot.md): validate on your own people before go-live
-- [API keys and permissions](docs/api-keys.md): create keys, scopes, Postman, rotate and revoke
+- [The API key](docs/api-keys.md): create it, use it (curl, Postman), change it, keep it safe
 - [Kiosks and audit log](docs/keys-and-audit.md): building a kiosk client, audit log
 - [Accuracy](docs/accuracy.md): how it's measured, results, tuning
 - [Privacy & security](docs/privacy.md): biometric data, consent, liveness

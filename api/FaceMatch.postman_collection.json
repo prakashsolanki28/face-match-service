@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "cd23b2df-6151-5bdf-b03c-9e063dcf9798",
     "name": "FaceMatch API",
-    "description": "Every FaceMatch 2.0.0 endpoint, ready to send.\n\n1. Import `FaceMatch.postman_environment.json` too and select the **FaceMatch** environment. Set `baseUrl` to your server and `apiKey` to a key: a device key with only the scopes you need.\n2. Send **System → Health check**, then **Auth → Who am I** to check the key.\n3. For photos, open **Body → form-data** and choose a file in each `image` / `images` row.\n\nEnrolling a person or creating a key saves the new id in `personId` / `keyId`, so the requests that need an id work straight away. Each request says which permission it needs.\n\nKeys and permissions: https://github.com/prakashsolanki28/face-match-service/blob/main/docs/api-keys.md\n\nGenerated from the OpenAPI spec by `face-match export-api`.",
+    "description": "Every FaceMatch 2.0.0 endpoint, ready to send.\n\n1. Import `FaceMatch.postman_environment.json` too and select the **FaceMatch** environment. Set `baseUrl` to your server and `apiKey` to your API key (the `API_KEY` setting).\n2. Send **System → Health check**, then **Auth → Check API key**.\n3. For photos, open **Body → form-data** and choose a file in each `image` / `images` row.\n\nEnrolling a person saves the new id in `personId` for the requests that need it.\n\nThe API key: https://github.com/prakashsolanki28/face-match-service/blob/main/docs/api-keys.md\n\nGenerated from the OpenAPI spec by `face-match export-api`.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -47,7 +47,7 @@
             "auth": {
               "type": "noauth"
             },
-            "description": "Liveness/readiness probe: also checks that the database answers.\n\n**Permission:** none (public)."
+            "description": "Liveness/readiness probe: also checks that the database answers.\n\n**Auth:** none (public)."
           },
           "response": []
         },
@@ -65,7 +65,7 @@
                 "metrics"
               ]
             },
-            "description": "Prometheus metrics. Needs a key with the `metrics` scope when auth is on.\n\n**Permission:** an API key with the `metrics` scope (or the admin key)."
+            "description": "Prometheus metrics. Needs the API key when auth is on.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": []
         },
@@ -84,7 +84,7 @@
             "auth": {
               "type": "noauth"
             },
-            "description": "Service identification for humans and load balancers.\n\n**Permission:** none (public)."
+            "description": "Service identification for humans and load balancers.\n\n**Auth:** none (public)."
           },
           "response": []
         }
@@ -92,15 +92,15 @@
     },
     {
       "name": "Auth",
-      "description": "Check which API key you are using and what it may do.",
+      "description": "Check that your API key works.",
       "item": [
         {
-          "name": "Who am I (check your key)",
+          "name": "Check API key",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "raw": "{{baseUrl}}/api/v1/auth/check",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -108,10 +108,10 @@
                 "api",
                 "v1",
                 "auth",
-                "me"
+                "check"
               ]
             },
-            "description": "Which key this is and what it may do (useful to check a kiosk or integration key).\n\n**Permission:** any valid API key."
+            "description": "Answers only when the request carries the right API key (otherwise 401).\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": []
         }
@@ -147,7 +147,7 @@
                 }
               ]
             },
-            "description": "Find faces in an image (no identity lookup).\n\n**Permission:** an API key with the `recognize` scope (or the admin key)."
+            "description": "Find faces in an image (no identity lookup).\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": []
         },
@@ -185,7 +185,7 @@
                 }
               ]
             },
-            "description": "Find faces and identify enrolled people. Does not record anything.\n\n**Permission:** an API key with the `recognize` scope (or the admin key)."
+            "description": "Find faces and identify enrolled people. Does not record anything.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": []
         }
@@ -240,7 +240,7 @@
                 }
               ]
             },
-            "description": "Enroll a person. 3-5 photos (slightly different angles/lighting) give the best accuracy.\n\n**Permission:** an API key with the `enroll` scope (or the admin key)."
+            "description": "Enroll a person. 3-5 photos (slightly different angles/lighting) give the best accuracy.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": [],
           "event": [
@@ -294,7 +294,7 @@
                 }
               ]
             },
-            "description": "People sorted by name. `X-Total-Count` holds the total for paging.\n\n**Permission:** an API key with the `read` scope (or the admin key)."
+            "description": "People sorted by name. `X-Total-Count` holds the total for paging.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": []
         },
@@ -322,7 +322,7 @@
                 }
               ]
             },
-            "description": "One person, by the id returned at enrollment.\n\n**Permission:** an API key with the `read` scope (or the admin key)."
+            "description": "One person, by the id returned at enrollment.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": []
         },
@@ -361,7 +361,7 @@
                 }
               ]
             },
-            "description": "Add more photos to an existing person to improve recognition.\n\n**Permission:** an API key with the `enroll` scope (or the admin key)."
+            "description": "Add more photos to an existing person to improve recognition.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": []
         },
@@ -407,7 +407,7 @@
                 }
               ]
             },
-            "description": "Replace all photos of a person (e.g. new school-year photos).\n\nAll-or-nothing: if none of the new photos is usable, the current photos are kept.\n\n**Permission:** an API key with the `enroll` scope (or the admin key)."
+            "description": "Replace all photos of a person (e.g. new school-year photos).\n\nAll-or-nothing: if none of the new photos is usable, the current photos are kept.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": []
         },
@@ -443,7 +443,7 @@
                 }
               ]
             },
-            "description": "Delete a person and their face data. Attendance history is kept unless erase_history=true.\n\n**Permission:** an API key with the `enroll` scope (or the admin key)."
+            "description": "Delete a person and their face data. Attendance history is kept unless erase_history=true.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": []
         }
@@ -485,7 +485,7 @@
                 }
               ]
             },
-            "description": "Recognise everyone in the frame and record attendance.\n\nRepeat sightings within ATTENDANCE_COOLDOWN_SECONDS return `already_marked`. With liveness on,\na face that looks like a photo or screen returns `liveness_failed` and is not recorded.\n\n**Permission:** an API key with the `attendance` scope (or the admin key)."
+            "description": "Recognise everyone in the frame and record attendance.\n\nRepeat sightings within ATTENDANCE_COOLDOWN_SECONDS return `already_marked`. With liveness on,\na face that looks like a photo or screen returns `liveness_failed` and is not recorded.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": []
         },
@@ -531,7 +531,7 @@
                 }
               ]
             },
-            "description": "Raw attendance events, newest first.\n\n**Permission:** an API key with the `read` scope (or the admin key)."
+            "description": "Raw attendance events, newest first.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": []
         },
@@ -560,7 +560,7 @@
                 }
               ]
             },
-            "description": "One row per person for the day: first seen (check-in), last seen (check-out).\n\n**Permission:** an API key with the `read` scope (or the admin key)."
+            "description": "One row per person for the day: first seen (check-in), last seen (check-out).\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": []
         }
@@ -568,76 +568,8 @@
     },
     {
       "name": "Admin",
-      "description": "API keys, webhook deliveries and the audit log (admin key only).",
+      "description": "Webhook deliveries and the audit log.",
       "item": [
-        {
-          "name": "List API keys",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/keys",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "keys"
-              ]
-            },
-            "description": "All API keys, active and revoked. Tokens are never returned.\n\n**Permission:** an API key with the `admin` scope (or the admin key)."
-          },
-          "response": []
-        },
-        {
-          "name": "Create an API key",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/keys",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "keys"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"gate-1-kiosk\",\n  \"scopes\": [\n    \"attendance\"\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "description": "Create a scoped API key, e.g. `{\"name\": \"gate-1\", \"scopes\": [\"attendance\"]}` for a kiosk.\n\nThe token is returned only once.\n\n**Permission:** an API key with the `admin` scope (or the admin key)."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// Saves the new id in the collection variable `keyId` for the next requests.",
-                  "if (pm.response.code === 201) {",
-                  "    pm.collectionVariables.set(\"keyId\", pm.response.json().key.id);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
         {
           "name": "List webhook deliveries",
           "request": {
@@ -674,7 +606,7 @@
                 }
               ]
             },
-            "description": "Webhook delivery queue, newest first. Failed deliveries can be retried.\n\n**Permission:** an API key with the `admin` scope (or the admin key)."
+            "description": "Webhook delivery queue, newest first. Failed deliveries can be retried.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": []
         },
@@ -703,7 +635,7 @@
                 }
               ]
             },
-            "description": "Send a failed webhook delivery again.\n\n**Permission:** an API key with the `admin` scope (or the admin key)."
+            "description": "Send a failed webhook delivery again.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": []
         },
@@ -744,40 +676,12 @@
                 {
                   "key": "actor",
                   "value": "",
-                  "description": "Exact actor, e.g. admin_key or key:gate-1#3f9c…",
+                  "description": "Exact actor, e.g. api_key.",
                   "disabled": true
                 }
               ]
             },
-            "description": "Who changed what: enrollments, photo changes, deletions, keys, webhook retries. Newest first.\n\n**Permission:** an API key with the `admin` scope (or the admin key)."
-          },
-          "response": []
-        },
-        {
-          "name": "Revoke an API key",
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/keys/:key_id",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "keys",
-                ":key_id"
-              ],
-              "variable": [
-                {
-                  "key": "key_id",
-                  "value": "{{keyId}}",
-                  "description": "The key's id."
-                }
-              ]
-            },
-            "description": "Revoke a key immediately.\n\n**Permission:** an API key with the `admin` scope (or the admin key)."
+            "description": "Who changed what: enrollments, photo changes, deletions, keys, webhook retries. Newest first.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`)."
           },
           "response": []
         }
@@ -792,11 +696,6 @@
     },
     {
       "key": "personId",
-      "value": "",
-      "description": "Set by earlier requests, or by hand."
-    },
-    {
-      "key": "keyId",
       "value": "",
       "description": "Set by earlier requests, or by hand."
     },

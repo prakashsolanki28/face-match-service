@@ -37,7 +37,7 @@ Python 3.11 or newer is required (patched FastAPI/Starlette releases need it). N
 face_match/
   cli.py          `face-match` command (serve, keys, backup, import, evaluate, export-api, …)
   main.py         FastAPI app factory: wiring, error handlers, CORS
-  openapi.py      the OpenAPI spec: permissions per endpoint, auth schemes, file fields
+  openapi.py      the OpenAPI spec: which endpoints need the API key, auth schemes, file fields
   api.py          /api/v1 routes and API-key auth
   service.py      business rules: enrollment checks, matching, attendance
   engine.py       FaceEngine interface + OpenCV YuNet/SFace implementation
@@ -47,7 +47,7 @@ face_match/
   webhook.py      signed outbound webhooks
   schemas.py      request/response models (the API contract)
   config.py       settings from environment / .env
-  security.py     admin and device keys, rate limiting, overload gate
+  security.py     the API key check, rate limiting, overload gate
   liveness.py     MiniFASNet anti-spoofing
   observability.py  metrics, request ids, JSON logs
   maintenance.py  backups, retention, periodic workers

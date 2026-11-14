@@ -9,8 +9,8 @@ Lab numbers don't replace a pilot. Your people, cameras, lighting and photos dec
 2. Enroll the group with `face-match import` from your portal photos, then fix every row the import report flags.
 3. Add **one live photo per person** taken with the kiosk camera (`POST /api/v1/persons/{id}/faces`, or
    `face-match import --add-photos`).
-4. Create a device key per kiosk with only `attendance` (`face-match keys create --name pilot-kiosk --scopes attendance`)
-   and point your kiosk app at `/api/v1/attendance` (see [keys-and-audit.md](keys-and-audit.md)).
+4. Point your kiosk app at `/api/v1/attendance` with the API key and a `device_id`
+   (see [keys-and-audit.md](keys-and-audit.md)).
 5. Keep taking attendance the usual way (paper or portal). That register is your ground truth.
 
 ## 2. Measure every day

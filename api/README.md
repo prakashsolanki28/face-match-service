@@ -1,7 +1,7 @@
 # API files to import
 
 Import these files into your API client and every FaceMatch endpoint is ready to send, with its parameters,
-example values, file fields and required permission filled in.
+example values, file fields and the API key filled in.
 
 | File | Format | Use it in |
 |---|---|---|
@@ -30,17 +30,16 @@ files are also attached to every [GitHub release](https://github.com/prakashsola
    `FaceMatch.postman_environment.json`, or paste the two links above.
 2. Choose the **FaceMatch** environment (top right) and edit it:
    - `baseUrl`: your server, e.g. `http://localhost:8000` or `https://face.example.com`
-   - `apiKey`: your key. It's a **secret** variable, so it's masked on screen. Use a device key with only the scopes
-     you need, not the admin key (see [docs/api-keys.md](../docs/api-keys.md)).
-3. Send **System → Health check**, then **Auth → Who am I** to check that your key works.
+   - `apiKey`: your API key (the `API_KEY` setting; see [docs/api-keys.md](../docs/api-keys.md)). It's a
+     **secret** variable, so it's masked on screen.
+3. Send **System → Health check**, then **Auth → Check API key** to check that your key works.
 4. For photos, open **Body → form-data** and choose a file in each `image` / `images` row. To enroll with several
    photos, add more `images` rows.
 
 The collection sends the key in the `X-API-Key` header for every request, except the public ones (health check,
-service info). Each request's description says which permission it needs. **Enroll a person** and **Create an
-API key** save the new id in the `personId` / `keyId` variables, so **Get a person**, **Add photos**,
-**Delete** and **Revoke** work straight away. Deletes are the last request in each folder, so you can run a whole
-folder (or the collection) from top to bottom.
+service info). The one key gives access to everything. **Enroll a person** saves the new id in the `personId`
+variable, so **Get a person**, **Add photos** and **Delete a person** work straight away. Deletes are the last
+request in each folder, so you can run a whole folder (or the collection) from top to bottom.
 
 For a test and a live server, duplicate the environment and change `baseUrl` and `apiKey` in the copy.
 
@@ -65,7 +64,7 @@ the tool's address to `CORS_ORIGINS` on the server, or use the desktop version o
 ## Generate a client
 
 `openapi.json` follows OpenAPI 3.1. Operation ids are readable (`enroll_person`, `mark_attendance`,
-`list_attendance` …), and each operation carries `x-required-scope` with the permission it needs.
+`list_attendance` …), and every operation that needs the API key declares it (`X-API-Key` or Bearer).
 
 ```bash
 # TypeScript types

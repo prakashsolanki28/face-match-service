@@ -35,7 +35,6 @@ from .schemas import (
     RecognizeResponse,
     RejectedImage,
 )
-from .security import SCOPES
 from .storage import Database, Row
 
 # When a photo has several faces, the largest is used for enrollment only if
@@ -620,21 +619,6 @@ class FaceService:
         self.gallery.remove(person_id)
 
     # ---- API keys & webhooks (admin) ----------------------------------------------
-
-    def create_api_key(self, name: str, scopes: List[str]) -> Tuple[Row, str]:
-        name = (name or "").strip()
-        unknown = sorted(set(scopes) - set(SCOPES))
-        if not name:
-            raise ServiceError(422, "invalid_name", "Name must not be empty.")
-        if not scopes or unknown:
-            raise ServiceError(
-                422, "invalid_scopes", f"Unknown or missing scopes: {unknown}", {"allowed": sorted(SCOPES)}
-            )
-        return self.db.create_api_key(name, scopes, self._iso(time.time()))
-
-    def revoke_api_key(self, key_id: str) -> None:
-        if not self.db.revoke_api_key(key_id, self._iso(time.time())):
-            raise ServiceError(404, "key_not_found", "API key not found or already revoked.")
 
     def retry_webhook(self, delivery_id: int) -> None:
         if not self.db.retry_webhook(delivery_id):

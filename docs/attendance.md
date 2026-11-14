@@ -44,7 +44,7 @@ anything else: in our evaluation, going from 1 to 3 photos per person cut "unkno
 
 ## 4. Daily use
 
-- **Kiosk:** your camera app at the entrance sends frames to `/api/v1/attendance` with an attendance-only device key
+- **Kiosk:** your camera app at the entrance sends frames to `/api/v1/attendance` with the API key
   (see [keys-and-audit.md](keys-and-audit.md)). Each person needs 1–2 seconds in front of it. One server handles
   about 25–35 kiosks; if 400 people arrive within 20 minutes, use 2–4 entry points.
 - **Records:** `GET /api/v1/attendance/summary?date=…` lists who was present; compare with `GET /api/v1/persons`

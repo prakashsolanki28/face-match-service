@@ -8,7 +8,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import __version__
-from .api import require, router
+from .api import authenticate, router
 from .config import Settings
 from .engine import FaceEngine, LivenessEngine, OpenCVFaceEngine
 from .liveness import load_liveness
@@ -25,7 +25,7 @@ from .model_store import ensure_models
 from .observability import Metrics, configure_logging, process_gauges, request_id_var
 from .openapi import INFO, install_openapi
 from .schemas import Health
-from .security import ImageGate, KeyStore, RateLimiter
+from .security import ApiKeyAuth, ImageGate, RateLimiter
 from .service import FaceService, ServiceError
 from .storage import open_database
 from .webhook import WebhookDispatcher
@@ -75,7 +75,7 @@ def create_app(
         liveness=liveness,
         on_event_queued=dispatcher.notify if dispatcher else None,
     )
-    keys = KeyStore(db, settings.api_key)
+    auth = ApiKeyAuth(settings.api_key)
     maintenance = MaintenanceWorker(db, settings, metrics)
     # Picks up enrollments made by other servers sharing the database (cheap when idle).
     gallery_sync = Periodic("gallery-sync", settings.gallery_sync_seconds, service.sync_gallery)
@@ -88,7 +88,7 @@ def create_app(
         liveness.name if liveness and settings.liveness == "on" else "off",
         stats["persons"],
         stats["embeddings"],
-        "on" if keys.auth_enabled() else "OFF (localhost only)",
+        "on" if auth.enabled else "OFF (localhost only)",
     )
 
     def gauges():
@@ -138,7 +138,7 @@ def create_app(
     app.state.settings = settings
     app.state.service = service
     app.state.metrics = metrics
-    app.state.keys = keys
+    app.state.auth = auth
     app.state.limiter = RateLimiter(settings.rate_limit_per_minute, settings.auth_failures_per_minute)
     app.state.image_gate = ImageGate(settings.max_concurrent_images)
     app.state.dispatcher = dispatcher
@@ -211,7 +211,7 @@ def create_app(
             match_threshold=settings.match_threshold,
             min_face_size=settings.min_face_size,
             liveness=bool(liveness and settings.liveness == "on"),
-            auth_required=keys.auth_enabled(),
+            auth_required=auth.enabled,
         )
 
     @app.get(
@@ -219,10 +219,10 @@ def create_app(
         summary="Prometheus metrics",
         tags=["system"],
         response_class=PlainTextResponse,
-        dependencies=[require("metrics")],
+        dependencies=[Depends(authenticate)],
     )
     def prometheus_metrics():
-        """Prometheus metrics. Needs a key with the `metrics` scope when auth is on."""
+        """Prometheus metrics. Needs the API key when auth is on."""
         return PlainTextResponse(metrics.render(), media_type="text/plain; version=0.0.4")
 
     @app.get("/", summary="Service info", tags=["system"])
@@ -231,5 +231,5 @@ def create_app(
         return {"service": "FaceMatch", "version": __version__, "api": "/api/v1", "openapi": "/openapi.json"}
 
     app.include_router(router)
-    install_openapi(app, router)
+    install_openapi(app)
     return app

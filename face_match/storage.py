@@ -1,4 +1,4 @@
-"""Persistence for people, embeddings, attendance, API keys, audit log and webhooks.
+"""Persistence for people, embeddings, attendance, audit log and webhooks.
 
 Two backends share one implementation:
   * SQLite (default): a single file in DATA_DIR, ideal for one server.
@@ -11,10 +11,8 @@ Only embeddings are stored, never the raw photos.
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
 import os
-import secrets
 import sqlite3
 import threading
 import time
@@ -24,7 +22,7 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tupl
 
 import numpy as np
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _TABLES = """
 CREATE TABLE IF NOT EXISTS persons (
@@ -56,18 +54,6 @@ CREATE TABLE IF NOT EXISTS attendance (
 );
 CREATE INDEX IF NOT EXISTS idx_attendance_day ON attendance(day);
 CREATE INDEX IF NOT EXISTS idx_attendance_person_ts ON attendance(person_id, ts);
-
--- Scoped API keys. Only a SHA-256 hash of each token is stored.
-CREATE TABLE IF NOT EXISTS api_keys (
-    id           TEXT PRIMARY KEY,
-    name         TEXT NOT NULL,
-    prefix       TEXT NOT NULL,
-    key_hash     TEXT NOT NULL UNIQUE,
-    scopes       TEXT NOT NULL,
-    created_at   TEXT NOT NULL,
-    last_used_at TEXT,
-    revoked_at   TEXT
-);
 
 -- Transactional outbox: webhook events are stored with the attendance event and
 -- delivered (with retries) by a background worker.
@@ -108,6 +94,9 @@ CREATE TABLE IF NOT EXISTS gallery_changes (
     op        TEXT NOT NULL,
     ts        {real} NOT NULL
 );
+
+-- Scoped device keys were removed in 2.0: the single API_KEY setting gives full access.
+DROP TABLE IF EXISTS api_keys;
 """
 
 _SQLITE_TYPES = {"serial": "INTEGER PRIMARY KEY AUTOINCREMENT", "blob": "BLOB", "real": "REAL"}
@@ -390,52 +379,6 @@ class Database:
     def purge_attendance_before(self, ts: float) -> int:
         with self._tx():
             return self._execute("DELETE FROM attendance WHERE ts < ?", (ts,)).rowcount
-
-    # ---- API keys --------------------------------------------------------------
-
-    @staticmethod
-    def hash_token(token: str) -> str:
-        return hashlib.sha256(token.encode()).hexdigest()
-
-    def create_api_key(self, name: str, scopes: Iterable[str], created_at: str) -> Tuple[Row, str]:
-        """Create a key. Returns (row, token); the token is not stored and can't be shown again."""
-        token = "fm_" + secrets.token_urlsafe(32)
-        key_id = uuid.uuid4().hex[:12]
-        with self._tx():
-            self._execute(
-                """INSERT INTO api_keys (id, name, prefix, key_hash, scopes, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (key_id, name, token[:10], self.hash_token(token), " ".join(sorted(set(scopes))), created_at),
-            )
-        return self.get_api_key(key_id), token  # type: ignore[return-value]
-
-    def get_api_key(self, key_id: str) -> Optional[Row]:
-        return self._one("SELECT * FROM api_keys WHERE id = ?", (key_id,))
-
-    def find_api_key(self, token: str) -> Optional[Row]:
-        return self._one(
-            "SELECT * FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL", (self.hash_token(token),)
-        )
-
-    def list_api_keys(self) -> List[Row]:
-        return self._all("SELECT * FROM api_keys ORDER BY created_at, id")
-
-    def revoke_api_key(self, key_id: str, revoked_at: str) -> bool:
-        with self._tx():
-            return (
-                self._execute(
-                    "UPDATE api_keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
-                    (revoked_at, key_id),
-                ).rowcount
-                > 0
-            )
-
-    def touch_api_key(self, key_id: str, used_at: str) -> None:
-        with self._tx():
-            self._execute("UPDATE api_keys SET last_used_at = ? WHERE id = ?", (used_at, key_id))
-
-    def has_active_api_keys(self) -> bool:
-        return self._one("SELECT 1 AS x FROM api_keys WHERE revoked_at IS NULL LIMIT 1") is not None
 
     # ---- audit log -------------------------------------------------------------------
 

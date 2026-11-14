@@ -26,7 +26,7 @@
           "system"
         ],
         "summary": "Health check",
-        "description": "Liveness/readiness probe: also checks that the database answers.\n\n**Permission:** none (public).",
+        "description": "Liveness/readiness probe: also checks that the database answers.\n\n**Auth:** none (public).",
         "operationId": "health",
         "responses": {
           "200": {
@@ -49,7 +49,7 @@
           "system"
         ],
         "summary": "Prometheus metrics",
-        "description": "Prometheus metrics. Needs a key with the `metrics` scope when auth is on.\n\n**Permission:** an API key with the `metrics` scope (or the admin key).",
+        "description": "Prometheus metrics. Needs the API key when auth is on.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "prometheus_metrics",
         "responses": {
           "200": {
@@ -80,8 +80,7 @@
           {
             "BearerAuth": []
           }
-        ],
-        "x-required-scope": "metrics"
+        ]
       }
     },
     "/": {
@@ -90,7 +89,7 @@
           "system"
         ],
         "summary": "Service info",
-        "description": "Service identification for humans and load balancers.\n\n**Permission:** none (public).",
+        "description": "Service identification for humans and load balancers.\n\n**Auth:** none (public).",
         "operationId": "root",
         "responses": {
           "200": {
@@ -111,7 +110,7 @@
           "faces"
         ],
         "summary": "Detect faces",
-        "description": "Find faces in an image (no identity lookup).\n\n**Permission:** an API key with the `recognize` scope (or the admin key).",
+        "description": "Find faces in an image (no identity lookup).\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "detect_faces",
         "requestBody": {
           "content": {
@@ -146,16 +145,6 @@
           },
           "401": {
             "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -212,8 +201,7 @@
           {
             "BearerAuth": []
           }
-        ],
-        "x-required-scope": "recognize"
+        ]
       }
     },
     "/api/v1/recognize": {
@@ -222,7 +210,7 @@
           "faces"
         ],
         "summary": "Recognize faces",
-        "description": "Find faces and identify enrolled people. Does not record anything.\n\n**Permission:** an API key with the `recognize` scope (or the admin key).",
+        "description": "Find faces and identify enrolled people. Does not record anything.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "recognize_faces",
         "security": [
           {
@@ -287,16 +275,6 @@
             },
             "description": "Unauthorized"
           },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "413": {
             "content": {
               "application/json": {
@@ -337,8 +315,7 @@
             },
             "description": "Service Unavailable"
           }
-        },
-        "x-required-scope": "recognize"
+        }
       }
     },
     "/api/v1/persons": {
@@ -347,7 +324,7 @@
           "persons"
         ],
         "summary": "Enroll a person",
-        "description": "Enroll a person. 3-5 photos (slightly different angles/lighting) give the best accuracy.\n\n**Permission:** an API key with the `enroll` scope (or the admin key).",
+        "description": "Enroll a person. 3-5 photos (slightly different angles/lighting) give the best accuracy.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "enroll_person",
         "security": [
           {
@@ -397,16 +374,6 @@
               }
             },
             "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
           },
           "413": {
             "content": {
@@ -458,15 +425,14 @@
             },
             "description": "Conflict"
           }
-        },
-        "x-required-scope": "enroll"
+        }
       },
       "get": {
         "tags": [
           "persons"
         ],
         "summary": "List people",
-        "description": "People sorted by name. `X-Total-Count` holds the total for paging.\n\n**Permission:** an API key with the `read` scope (or the admin key).",
+        "description": "People sorted by name. `X-Total-Count` holds the total for paging.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "list_persons",
         "security": [
           {
@@ -567,16 +533,6 @@
             },
             "description": "Unauthorized"
           },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "413": {
             "content": {
               "application/json": {
@@ -617,8 +573,7 @@
             },
             "description": "Service Unavailable"
           }
-        },
-        "x-required-scope": "read"
+        }
       }
     },
     "/api/v1/persons/{person_id}": {
@@ -627,7 +582,7 @@
           "persons"
         ],
         "summary": "Get a person",
-        "description": "One person, by the id returned at enrollment.\n\n**Permission:** an API key with the `read` scope (or the admin key).",
+        "description": "One person, by the id returned at enrollment.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "get_person",
         "security": [
           {
@@ -681,16 +636,6 @@
             },
             "description": "Unauthorized"
           },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "413": {
             "content": {
               "application/json": {
@@ -731,15 +676,14 @@
             },
             "description": "Service Unavailable"
           }
-        },
-        "x-required-scope": "read"
+        }
       },
       "delete": {
         "tags": [
           "persons"
         ],
         "summary": "Delete a person",
-        "description": "Delete a person and their face data. Attendance history is kept unless erase_history=true.\n\n**Permission:** an API key with the `enroll` scope (or the admin key).",
+        "description": "Delete a person and their face data. Attendance history is kept unless erase_history=true.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "delete_person",
         "security": [
           {
@@ -798,16 +742,6 @@
             },
             "description": "Unauthorized"
           },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "413": {
             "content": {
               "application/json": {
@@ -858,8 +792,7 @@
             },
             "description": "Not Found"
           }
-        },
-        "x-required-scope": "enroll"
+        }
       }
     },
     "/api/v1/persons/{person_id}/faces": {
@@ -868,7 +801,7 @@
           "persons"
         ],
         "summary": "Add photos to a person",
-        "description": "Add more photos to an existing person to improve recognition.\n\n**Permission:** an API key with the `enroll` scope (or the admin key).",
+        "description": "Add more photos to an existing person to improve recognition.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "add_faces",
         "security": [
           {
@@ -932,16 +865,6 @@
             },
             "description": "Unauthorized"
           },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "413": {
             "content": {
               "application/json": {
@@ -1002,15 +925,14 @@
             },
             "description": "Conflict"
           }
-        },
-        "x-required-scope": "enroll"
+        }
       },
       "put": {
         "tags": [
           "persons"
         ],
         "summary": "Replace a person's photos",
-        "description": "Replace all photos of a person (e.g. new school-year photos).\n\nAll-or-nothing: if none of the new photos is usable, the current photos are kept.\n\n**Permission:** an API key with the `enroll` scope (or the admin key).",
+        "description": "Replace all photos of a person (e.g. new school-year photos).\n\nAll-or-nothing: if none of the new photos is usable, the current photos are kept.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "replace_faces",
         "security": [
           {
@@ -1074,16 +996,6 @@
             },
             "description": "Unauthorized"
           },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "413": {
             "content": {
               "application/json": {
@@ -1144,8 +1056,7 @@
             },
             "description": "Conflict"
           }
-        },
-        "x-required-scope": "enroll"
+        }
       }
     },
     "/api/v1/attendance": {
@@ -1154,7 +1065,7 @@
           "attendance"
         ],
         "summary": "Mark attendance",
-        "description": "Recognise everyone in the frame and record attendance.\n\nRepeat sightings within ATTENDANCE_COOLDOWN_SECONDS return `already_marked`. With liveness on,\na face that looks like a photo or screen returns `liveness_failed` and is not recorded.\n\n**Permission:** an API key with the `attendance` scope (or the admin key).",
+        "description": "Recognise everyone in the frame and record attendance.\n\nRepeat sightings within ATTENDANCE_COOLDOWN_SECONDS return `already_marked`. With liveness on,\na face that looks like a photo or screen returns `liveness_failed` and is not recorded.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "mark_attendance",
         "security": [
           {
@@ -1205,16 +1116,6 @@
             },
             "description": "Unauthorized"
           },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "413": {
             "content": {
               "application/json": {
@@ -1255,15 +1156,14 @@
             },
             "description": "Service Unavailable"
           }
-        },
-        "x-required-scope": "attendance"
+        }
       },
       "get": {
         "tags": [
           "attendance"
         ],
         "summary": "List attendance events",
-        "description": "Raw attendance events, newest first.\n\n**Permission:** an API key with the `read` scope (or the admin key).",
+        "description": "Raw attendance events, newest first.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "list_attendance",
         "security": [
           {
@@ -1377,16 +1277,6 @@
             },
             "description": "Unauthorized"
           },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "413": {
             "content": {
               "application/json": {
@@ -1427,8 +1317,7 @@
             },
             "description": "Service Unavailable"
           }
-        },
-        "x-required-scope": "read"
+        }
       }
     },
     "/api/v1/attendance/summary": {
@@ -1437,7 +1326,7 @@
           "attendance"
         ],
         "summary": "Daily attendance summary",
-        "description": "One row per person for the day: first seen (check-in), last seen (check-out).\n\n**Permission:** an API key with the `read` scope (or the admin key).",
+        "description": "One row per person for the day: first seen (check-in), last seen (check-out).\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "attendance_summary",
         "security": [
           {
@@ -1506,16 +1395,6 @@
             },
             "description": "Unauthorized"
           },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "413": {
             "content": {
               "application/json": {
@@ -1556,329 +1435,7 @@
             },
             "description": "Service Unavailable"
           }
-        },
-        "x-required-scope": "read"
-      }
-    },
-    "/api/v1/keys": {
-      "get": {
-        "tags": [
-          "admin"
-        ],
-        "summary": "List API keys",
-        "description": "All API keys, active and revoked. Tokens are never returned.\n\n**Permission:** an API key with the `admin` scope (or the admin key).",
-        "operationId": "list_keys",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ApiKey"
-                  },
-                  "type": "array",
-                  "title": "Response List Keys"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Request Entity Too Large",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Unprocessable Entity",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Too Many Requests",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Service Unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "x-required-scope": "admin"
-      },
-      "post": {
-        "tags": [
-          "admin"
-        ],
-        "summary": "Create an API key",
-        "description": "Create a scoped API key, e.g. `{\"name\": \"gate-1\", \"scopes\": [\"attendance\"]}` for a kiosk.\n\nThe token is returned only once.\n\n**Permission:** an API key with the `admin` scope (or the admin key).",
-        "operationId": "create_key",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ApiKeyCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiKeyCreated"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Request Entity Too Large",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Unprocessable Entity",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Too Many Requests",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Service Unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "x-required-scope": "admin"
-      }
-    },
-    "/api/v1/keys/{key_id}": {
-      "delete": {
-        "tags": [
-          "admin"
-        ],
-        "summary": "Revoke an API key",
-        "description": "Revoke a key immediately.\n\n**Permission:** an API key with the `admin` scope (or the admin key).",
-        "operationId": "revoke_key",
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "key_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "The key's id.",
-              "title": "Key Id"
-            },
-            "description": "The key's id."
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Request Entity Too Large"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        },
-        "x-required-scope": "admin"
+        }
       }
     },
     "/api/v1/webhooks": {
@@ -1887,7 +1444,7 @@
           "admin"
         ],
         "summary": "List webhook deliveries",
-        "description": "Webhook delivery queue, newest first. Failed deliveries can be retried.\n\n**Permission:** an API key with the `admin` scope (or the admin key).",
+        "description": "Webhook delivery queue, newest first. Failed deliveries can be retried.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "list_webhooks",
         "security": [
           {
@@ -1984,16 +1541,6 @@
             },
             "description": "Unauthorized"
           },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "413": {
             "content": {
               "application/json": {
@@ -2034,8 +1581,7 @@
             },
             "description": "Service Unavailable"
           }
-        },
-        "x-required-scope": "admin"
+        }
       }
     },
     "/api/v1/webhooks/{delivery_id}/retry": {
@@ -2044,7 +1590,7 @@
           "admin"
         ],
         "summary": "Retry a webhook delivery",
-        "description": "Send a failed webhook delivery again.\n\n**Permission:** an API key with the `admin` scope (or the admin key).",
+        "description": "Send a failed webhook delivery again.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "retry_webhook",
         "security": [
           {
@@ -2096,16 +1642,6 @@
             },
             "description": "Unauthorized"
           },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "413": {
             "content": {
               "application/json": {
@@ -2146,25 +1682,24 @@
             },
             "description": "Service Unavailable"
           }
-        },
-        "x-required-scope": "admin"
+        }
       }
     },
-    "/api/v1/auth/me": {
+    "/api/v1/auth/check": {
       "get": {
         "tags": [
           "auth"
         ],
-        "summary": "Who am I (check your key)",
-        "description": "Which key this is and what it may do (useful to check a kiosk or integration key).\n\n**Permission:** any valid API key.",
-        "operationId": "whoami",
+        "summary": "Check API key",
+        "description": "Answers only when the request carries the right API key (otherwise 401).\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
+        "operationId": "check_api_key",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WhoAmI"
+                  "$ref": "#/components/schemas/AuthCheck"
                 }
               }
             }
@@ -2181,16 +1716,6 @@
           },
           "401": {
             "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -2247,8 +1772,7 @@
           {
             "BearerAuth": []
           }
-        ],
-        "x-required-scope": "any"
+        ]
       }
     },
     "/api/v1/audit": {
@@ -2257,7 +1781,7 @@
           "admin"
         ],
         "summary": "Audit log",
-        "description": "Who changed what: enrollments, photo changes, deletions, keys, webhook retries. Newest first.\n\n**Permission:** an API key with the `admin` scope (or the admin key).",
+        "description": "Who changed what: enrollments, photo changes, deletions, keys, webhook retries. Newest first.\n\n**Auth:** the API key, in the `X-API-Key` header (or `Authorization: Bearer`).",
         "operationId": "list_audit",
         "security": [
           {
@@ -2326,10 +1850,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Exact actor, e.g. admin_key or key:gate-1#3f9c…",
+              "description": "Exact actor, e.g. api_key.",
               "title": "Actor"
             },
-            "description": "Exact actor, e.g. admin_key or key:gate-1#3f9c…"
+            "description": "Exact actor, e.g. api_key."
           }
         ],
         "responses": {
@@ -2366,16 +1890,6 @@
               }
             },
             "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
           },
           "413": {
             "content": {
@@ -2417,122 +1931,12 @@
             },
             "description": "Service Unavailable"
           }
-        },
-        "x-required-scope": "admin"
+        }
       }
     }
   },
   "components": {
     "schemas": {
-      "ApiKey": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "prefix": {
-            "type": "string",
-            "title": "Prefix",
-            "description": "First characters of the token, to recognise it."
-          },
-          "scopes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Scopes"
-          },
-          "created_at": {
-            "type": "string",
-            "title": "Created At"
-          },
-          "last_used_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Used At"
-          },
-          "revoked_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Revoked At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "prefix",
-          "scopes",
-          "created_at",
-          "last_used_at",
-          "revoked_at"
-        ],
-        "title": "ApiKey"
-      },
-      "ApiKeyCreate": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 100,
-            "title": "Name",
-            "examples": [
-              "gate-1-kiosk"
-            ]
-          },
-          "scopes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Scopes",
-            "examples": [
-              [
-                "attendance"
-              ]
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "scopes"
-        ],
-        "title": "ApiKeyCreate"
-      },
-      "ApiKeyCreated": {
-        "properties": {
-          "key": {
-            "$ref": "#/components/schemas/ApiKey"
-          },
-          "token": {
-            "type": "string",
-            "title": "Token",
-            "description": "Shown only once. Store it securely."
-          }
-        },
-        "type": "object",
-        "required": [
-          "key",
-          "token"
-        ],
-        "title": "ApiKeyCreated"
-      },
       "AttendanceEvent": {
         "properties": {
           "id": {
@@ -2862,6 +2266,26 @@
           "request_id"
         ],
         "title": "AuditEntry"
+      },
+      "AuthCheck": {
+        "properties": {
+          "authenticated": {
+            "type": "boolean",
+            "title": "Authenticated",
+            "description": "True: the request carried the correct API key."
+          },
+          "auth_required": {
+            "type": "boolean",
+            "title": "Auth Required",
+            "description": "False only on a local server running without API_KEY."
+          }
+        },
+        "type": "object",
+        "required": [
+          "authenticated",
+          "auth_required"
+        ],
+        "title": "AuthCheck"
       },
       "Body_add_faces": {
         "properties": {
@@ -3587,37 +3011,6 @@
           "next_attempt_at"
         ],
         "title": "WebhookDelivery"
-      },
-      "WhoAmI": {
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "admin_key",
-              "key",
-              "open"
-            ],
-            "title": "Kind"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "scopes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Scopes"
-          }
-        },
-        "type": "object",
-        "required": [
-          "kind",
-          "name",
-          "scopes"
-        ],
-        "title": "WhoAmI"
       }
     },
     "securitySchemes": {
@@ -3625,7 +3018,7 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-API-Key",
-        "description": "The admin key (`API_KEY` setting) or a device key (`fm_…`). See docs/api-keys.md."
+        "description": "The API key (the `API_KEY` setting). See docs/api-keys.md."
       },
       "BearerAuth": {
         "type": "http",
@@ -3641,7 +3034,7 @@
     },
     {
       "name": "auth",
-      "description": "Check which API key you are using and what it may do."
+      "description": "Check that your API key works."
     },
     {
       "name": "faces",
@@ -3657,7 +3050,7 @@
     },
     {
       "name": "admin",
-      "description": "API keys, webhook deliveries and the audit log (admin key only)."
+      "description": "Webhook deliveries and the audit log."
     }
   ]
 }

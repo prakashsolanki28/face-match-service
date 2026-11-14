@@ -12,29 +12,26 @@ from face_match.tools import export_api
 
 API_DIR = Path(__file__).resolve().parent.parent / "api"
 
-# The permission each endpoint needs; docs/api-keys.md documents the same table.
-EXPECTED_SCOPES = {
-    ("get", "/health"): None,
-    ("get", "/"): None,
-    ("get", "/metrics"): "metrics",
-    ("get", "/api/v1/auth/me"): "any",
-    ("post", "/api/v1/detect"): "recognize",
-    ("post", "/api/v1/recognize"): "recognize",
-    ("post", "/api/v1/persons"): "enroll",
-    ("get", "/api/v1/persons"): "read",
-    ("get", "/api/v1/persons/{person_id}"): "read",
-    ("delete", "/api/v1/persons/{person_id}"): "enroll",
-    ("post", "/api/v1/persons/{person_id}/faces"): "enroll",
-    ("put", "/api/v1/persons/{person_id}/faces"): "enroll",
-    ("post", "/api/v1/attendance"): "attendance",
-    ("get", "/api/v1/attendance"): "read",
-    ("get", "/api/v1/attendance/summary"): "read",
-    ("get", "/api/v1/keys"): "admin",
-    ("post", "/api/v1/keys"): "admin",
-    ("delete", "/api/v1/keys/{key_id}"): "admin",
-    ("get", "/api/v1/webhooks"): "admin",
-    ("post", "/api/v1/webhooks/{delivery_id}/retry"): "admin",
-    ("get", "/api/v1/audit"): "admin",
+# Every endpoint, and whether it needs the API key (one key gives full access).
+EXPECTED_AUTH = {
+    ("get", "/health"): False,
+    ("get", "/"): False,
+    ("get", "/metrics"): True,
+    ("get", "/api/v1/auth/check"): True,
+    ("post", "/api/v1/detect"): True,
+    ("post", "/api/v1/recognize"): True,
+    ("post", "/api/v1/persons"): True,
+    ("get", "/api/v1/persons"): True,
+    ("get", "/api/v1/persons/{person_id}"): True,
+    ("delete", "/api/v1/persons/{person_id}"): True,
+    ("post", "/api/v1/persons/{person_id}/faces"): True,
+    ("put", "/api/v1/persons/{person_id}/faces"): True,
+    ("post", "/api/v1/attendance"): True,
+    ("get", "/api/v1/attendance"): True,
+    ("get", "/api/v1/attendance/summary"): True,
+    ("get", "/api/v1/webhooks"): True,
+    ("post", "/api/v1/webhooks/{delivery_id}/retry"): True,
+    ("get", "/api/v1/audit"): True,
 }
 
 
@@ -60,7 +57,7 @@ def _spec_shape(spec):
         shape[f"{method} {path}"] = (
             op["operationId"],
             op["summary"],
-            op.get("x-required-scope"),
+            bool(op["security"]),
             sorted(p["name"] for p in op.get("parameters", [])),
             fields,
         )
@@ -99,14 +96,14 @@ def test_committed_files_are_up_to_date(files):
     assert committed[export_api.ENVIRONMENT_FILE] == files[export_api.ENVIRONMENT_FILE]
 
 
-def test_every_endpoint_documents_its_permission(files):
+def test_every_endpoint_documents_its_auth(files):
     spec = files["openapi.json"]
-    found = {key: op.get("x-required-scope") for key, op in _operations(spec).items()}
-    assert found == EXPECTED_SCOPES
     key_auth = [{"APIKeyHeader": []}, {"BearerAuth": []}]
+    assert set(_operations(spec)) == set(EXPECTED_AUTH)
     for key, op in _operations(spec).items():
-        assert "**Permission:**" in op["description"], key
-        assert op["security"] == ([] if EXPECTED_SCOPES[key] is None else key_auth), key
+        assert op["security"] == (key_auth if EXPECTED_AUTH[key] else []), key
+        assert "**Auth:**" in op["description"], key
+        assert "x-required-scope" not in op and "scope" not in op["description"], key
 
 
 def test_exported_spec_is_what_the_server_serves(client, files):
@@ -131,7 +128,7 @@ def test_postman_collection_is_ready_to_send(files):
     assert collection["auth"]["type"] == "apikey"
     assert {"key": "value", "value": "{{apiKey}}", "type": "string"} in collection["auth"]["apikey"]
     requests = list(_requests(collection))
-    assert len(requests) == len(EXPECTED_SCOPES)
+    assert len(requests) == len(EXPECTED_AUTH)
     assert len({item["name"] for _, item in requests}) == len(requests)
     public = {"Health check", "Service info"}
     for _, item in requests:

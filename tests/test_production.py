@@ -1,4 +1,4 @@
-"""Production features: scoped keys, audit log, rate limiting, overload, reliable webhooks, metrics,
+"""Production features: the API key, audit log, rate limiting, overload, reliable webhooks, metrics,
 structured logs, data protection (backups, retention) and the pilot report. Generated images only."""
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from face_match.security import Busy, ImageGate
 from face_match.storage import Database
 from face_match.tools import pilot_report
 
-ADMIN = {"X-API-Key": "admin-key"}
+KEY = {"X-API-Key": "the-api-key"}
 
 
 def _img(person: int = 1, variant: int = 0):
@@ -37,86 +37,85 @@ def _enroll(client, person=1, external_id="EMP-1", headers=None):
     )
 
 
-def _new_key(client, scopes, name="device"):
-    res = client.post("/api/v1/keys", json={"name": name, "scopes": scopes}, headers=ADMIN)
-    assert res.status_code == 201, res.text
-    return {"X-API-Key": res.json()["token"]}, res.json()["key"]
+# ---- the API key ------------------------------------------------------------------
 
 
-# ---- scoped API keys ------------------------------------------------------------
+def test_the_api_key_opens_every_endpoint(make_client):
+    with make_client(api_key="the-api-key") as client:
+        assert _enroll(client, headers=KEY).status_code == 201
+        bearer = {"Authorization": "Bearer the-api-key"}
+        for headers in (KEY, bearer):
+            assert client.get("/api/v1/persons", headers=headers).status_code == 200
+            assert client.post("/api/v1/recognize", files=_img(), headers=headers).status_code == 200
+            assert client.post("/api/v1/attendance", files=_img(), headers=headers).status_code == 200
+            assert client.get("/api/v1/audit", headers=headers).status_code == 200
+            assert client.get("/metrics", headers=headers).status_code == 200
+        check = client.get("/api/v1/auth/check", headers=KEY).json()
+        assert check == {"authenticated": True, "auth_required": True}
 
 
-def test_kiosk_key_can_only_mark_attendance(make_client):
-    with make_client(api_key="admin-key") as client:
-        assert _enroll(client, headers=ADMIN).status_code == 201
-        kiosk, key = _new_key(client, ["attendance"], "gate-1")
-        assert key["prefix"].startswith("fm_") and key["scopes"] == ["attendance"]
-        assert client.post("/api/v1/attendance", files=_img(), headers=kiosk).status_code == 200
-        for method, path in [
-            ("get", "/api/v1/persons"),
-            ("post", "/api/v1/recognize"),
-            ("get", "/api/v1/keys"),
-        ]:
-            kwargs = {"files": _img()} if method == "post" else {}
-            res = getattr(client, method)(path, headers=kiosk, **kwargs)
-            assert res.status_code == 403 and res.json()["error"]["code"] == "forbidden", path
-        assert _enroll(client, 2, "EMP-2", headers=kiosk).status_code == 403
-        me = client.get("/api/v1/auth/me", headers=kiosk).json()
-        assert me == {"kind": "key", "name": "gate-1", "scopes": ["attendance"]}
+def test_requests_without_the_right_key_are_rejected(make_client):
+    with make_client(api_key="the-api-key") as client:
+        for headers in ({}, {"X-API-Key": "wrong"}, {"Authorization": "Bearer wrong"}):
+            for path in ("/api/v1/persons", "/api/v1/auth/check", "/metrics"):
+                res = client.get(path, headers=headers)
+                assert res.status_code == 401 and res.json()["error"]["code"] == "unauthorized", path
+        assert client.get("/health").status_code == 200  # public
+        assert client.get("/").status_code == 200
 
 
-def test_bearer_auth_and_revocation(make_client):
-    with make_client(api_key="admin-key") as client:
-        reader, key = _new_key(client, ["read"])
-        bearer = {"Authorization": f"Bearer {reader['X-API-Key']}"}
-        assert client.get("/api/v1/persons", headers=bearer).status_code == 200
-        listed = client.get("/api/v1/keys", headers=ADMIN).json()
-        assert [k["id"] for k in listed] == [key["id"]] and "token" not in listed[0]
-        assert client.delete(f"/api/v1/keys/{key['id']}", headers=ADMIN).status_code == 204
-        assert client.get("/api/v1/persons", headers=reader).status_code == 401
-
-
-def test_unknown_scope_rejected(make_client):
-    with make_client(api_key="admin-key") as client:
-        res = client.post("/api/v1/keys", json={"name": "x", "scopes": ["root"]}, headers=ADMIN)
-        assert res.status_code == 422 and res.json()["error"]["code"] == "invalid_scopes"
-
-
-def test_device_keys_alone_turn_auth_on(client):
+def test_without_an_api_key_the_local_api_is_open(client):
     assert client.get("/health").json()["auth_required"] is False
-    client.app.state.service.db.create_api_key("kiosk", ["attendance"], "2026-01-01T00:00:00")
-    client.app.state.keys.invalidate()
-    assert client.get("/health").json()["auth_required"] is True
-    assert client.get("/api/v1/persons").status_code == 401
+    assert client.get("/api/v1/persons").status_code == 200
+    assert client.get("/api/v1/auth/check").json() == {"authenticated": False, "auth_required": False}
 
 
-def test_audit_log_records_which_key_did_what(make_client):
-    with make_client(api_key="admin-key") as client:
-        portal, key = _new_key(client, ["enroll", "read"], "portal-sync")
-        person = _enroll(client, headers=portal).json()["person"]
+def test_there_is_no_key_management_or_permissions(make_client):
+    with make_client(api_key="the-api-key") as client:
+        assert client.get("/api/v1/keys", headers=KEY).status_code == 404
+        assert (
+            client.post("/api/v1/keys", json={"name": "x", "scopes": ["read"]}, headers=KEY).status_code
+            == 404
+        )
+        assert client.get("/api/v1/auth/me", headers=KEY).status_code == 404
+        assert "403" not in json.dumps(client.get("/openapi.json").json()["paths"])
+
+
+def test_old_device_keys_are_dropped_from_existing_databases(tmp_path):
+    path = tmp_path / "facematch.db"
+    old = sqlite3.connect(path)
+    old.execute("CREATE TABLE api_keys (id TEXT PRIMARY KEY, key_hash TEXT)")
+    old.execute("INSERT INTO api_keys VALUES ('k1', 'hash')")
+    old.commit()
+    old.close()
+    Database(path).close()
+    tables = {
+        r[0] for r in sqlite3.connect(path).execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    assert "api_keys" not in tables and "persons" in tables
+
+
+def test_audit_log_records_what_changed(make_client):
+    with make_client(api_key="the-api-key") as client:
+        person = _enroll(client, headers=KEY).json()["person"]
         client.post(
             f"/api/v1/persons/{person['id']}/faces",
             files=[("images", ("f.png", face_png(Spec(1, 1)), "image/png"))],
-            headers=portal,
+            headers=KEY,
         )
-        client.delete(f"/api/v1/persons/{person['id']}?erase_history=true", headers=ADMIN)
-        client.delete(f"/api/v1/keys/{key['id']}", headers=ADMIN)
+        client.delete(f"/api/v1/persons/{person['id']}?erase_history=true", headers=KEY)
 
-        entries = client.get("/api/v1/audit", headers=ADMIN).json()
-        actor = f"key:portal-sync#{key['id']}"
+        entries = client.get("/api/v1/audit", headers=KEY).json()
         assert [(e["actor"], e["action"]) for e in reversed(entries)] == [
-            ("admin_key", "key.create"),
-            (actor, "person.create"),
-            (actor, "person.add_faces"),
-            ("admin_key", "person.delete"),
-            ("admin_key", "key.revoke"),
+            ("api_key", "person.create"),
+            ("api_key", "person.add_faces"),
+            ("api_key", "person.delete"),
         ]
-        deletion = entries[1]
+        deletion = entries[0]
         assert deletion["details"] == {"name": "Asha", "external_id": "EMP-1", "erase_history": True}
         assert deletion["request_id"] and deletion["ip"]
-        filtered = client.get("/api/v1/audit?action=person.*", headers=ADMIN).json()
-        assert {e["action"] for e in filtered} == {"person.create", "person.add_faces", "person.delete"}
-        assert client.get("/api/v1/audit", headers=portal).status_code == 401  # revoked
+        filtered = client.get("/api/v1/audit?action=person.add*", headers=KEY).json()
+        assert [e["action"] for e in filtered] == ["person.add_faces"]
 
 
 # ---- abuse protection -------------------------------------------------------------
@@ -130,7 +129,7 @@ def test_rate_limit_returns_429_with_retry_after(make_client):
 
 
 def test_repeated_bad_keys_are_throttled(make_client):
-    with make_client(api_key="admin-key", auth_failures_per_minute=2) as client:
+    with make_client(api_key="the-api-key", auth_failures_per_minute=2) as client:
         codes = [client.get("/api/v1/persons", headers={"X-API-Key": "guess"}).status_code for _ in range(3)]
         assert codes == [401, 401, 429]
 
@@ -207,19 +206,19 @@ def test_webhook_gives_up_then_can_be_retried(make_client):
     receiver = _Receiver(fail_first=10**6)
     try:
         settings = dict(
-            api_key="admin-key",
+            api_key="the-api-key",
             webhook_url=receiver.url,
             webhook_retry_base_seconds=0.1,
             webhook_max_attempts=2,
         )
         with make_client(**settings) as client:
-            _enroll(client, headers=ADMIN)
-            client.post("/api/v1/attendance", files=_img(), headers=ADMIN)
+            _enroll(client, headers=KEY)
+            client.post("/api/v1/attendance", files=_img(), headers=KEY)
             receiver.wait_for(2)
             assert _wait_status(client, "failed")
-            failed = client.get("/api/v1/webhooks?status=failed", headers=ADMIN).json()
+            failed = client.get("/api/v1/webhooks?status=failed", headers=KEY).json()
             assert failed[0]["attempts"] == 2 and "500" in failed[0]["last_error"]
-            assert client.post(f"/api/v1/webhooks/{failed[0]['id']}/retry", headers=ADMIN).status_code == 202
+            assert client.post(f"/api/v1/webhooks/{failed[0]['id']}/retry", headers=KEY).status_code == 202
             assert len(receiver.wait_for(3)) >= 3
     finally:
         receiver.close()
@@ -229,15 +228,13 @@ def test_webhook_gives_up_then_can_be_retried(make_client):
 
 
 def test_metrics_and_request_ids(make_client):
-    with make_client(api_key="admin-key") as client:
+    with make_client(api_key="the-api-key") as client:
         assert client.get("/health", headers={"X-Request-ID": "abc123"}).headers["X-Request-ID"] == "abc123"
         assert len(client.get("/health").headers["X-Request-ID"]) == 16
 
-        client.post("/api/v1/recognize", files=_img(), headers=ADMIN)
-        kiosk, _ = _new_key(client, ["attendance"])
-        assert client.get("/metrics", headers=kiosk).status_code == 403
-        scraper, _ = _new_key(client, ["metrics"])
-        body = client.get("/metrics", headers=scraper).text
+        client.post("/api/v1/recognize", files=_img(), headers=KEY)
+        assert client.get("/metrics").status_code == 401
+        body = client.get("/metrics", headers=KEY).text
         assert 'facematch_faces_total{endpoint="recognize",outcome="nobody_enrolled"} 1' in body
         assert 'facematch_http_requests_total{method="POST",route="/api/v1/recognize",status="200"} 1' in body
         assert "facematch_http_request_duration_seconds_bucket" in body
@@ -291,27 +288,15 @@ def test_maintenance_backs_up_and_applies_retention(make_client):
 # ---- CLI & pilot report ---------------------------------------------------------------
 
 
-def test_cli_keys_and_backup(tmp_path, monkeypatch, capsys):
+def test_cli_backup_and_no_keys_command(tmp_path, monkeypatch, capsys):
     from face_match.cli import main
 
     monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
-    main(["keys", "create", "--name", "gate-1", "--scopes", "attendance,read"])
-    out = capsys.readouterr().out
-    assert out.split("Token (shown once, store it securely): ")[1].strip().startswith("fm_")
-    key_id = out.split("Created key ")[1].split()[0]
-    main(["keys", "list"])
-    assert "gate-1" in capsys.readouterr().out
-    main(["keys", "revoke", key_id])
-    with pytest.raises(SystemExit):
-        main(["keys", "create", "--name", "x", "--scopes", "superuser"])
     main(["backup"])
     assert "Backup written" in capsys.readouterr().out
-    db = Database(tmp_path / "data" / "facematch.db")
-    assert [(e["actor"], e["action"]) for e in reversed(db.list_audit(10))] == [
-        ("cli", "key.create"),
-        ("cli", "key.revoke"),
-    ]
-    db.close()
+    with pytest.raises(SystemExit) as exit_info:
+        main(["keys", "list"])
+    assert exit_info.value.code == 2  # unknown command
 
 
 def test_pilot_report_compare_flags_false_presents():

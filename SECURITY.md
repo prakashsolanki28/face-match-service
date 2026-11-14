@@ -14,10 +14,10 @@ Security fixes go into the latest minor release.
 
 FaceMatch stores biometric data (face embeddings). Treat a deployment like any system holding personal data:
 
-- **Always set `API_KEY`** (the admin key). The service refuses to listen on a network interface without
-  authentication, unless you set `ALLOW_NO_AUTH=true` on purpose.
-- **Give every kiosk and integration its own scoped key** (see [docs/api-keys.md](docs/api-keys.md)) (`face-match keys create --scopes attendance`) and
-  revoke lost devices. Never put the admin key on a kiosk.
+- **Always set `API_KEY`**: one key with full access to the API (see [docs/api-keys.md](docs/api-keys.md)). The
+  service refuses to listen on a network interface without it, unless you set `ALLOW_NO_AUTH=true` on purpose.
+- Keep the key on servers and locked-down kiosks you control, never in browser or mobile app code. Change it on
+  the server and every client if it leaks or a device is lost.
 - Rate limiting (`RATE_LIMIT_PER_MINUTE`), bad-key throttling and an overload gate are on by default. Behind a
   reverse proxy, set `FORWARDED_ALLOW_IPS` so limits apply per real client.
 - Serve it over **HTTPS**, behind a reverse proxy (Caddy, nginx, Traefik). Browsers only allow the camera on
@@ -26,5 +26,6 @@ FaceMatch stores biometric data (face embeddings). Treat a deployment like any s
 - Set `WEBHOOK_SECRET` and verify `X-Signature-256` on the receiving side.
 - Protect `DATA_DIR`: the database and automatic backups are owner-only files; use disk encryption and copy
   backups off-site, encrypted.
-- **Liveness is not included.** A printed photo or a screen can pass as a person. Add presentation-attack
-  detection before using FaceMatch for access control. See [docs/privacy.md](docs/privacy.md).
+- **Liveness is a deterrent, not a guarantee.** It rejects photos and screens held up to the camera, but not
+  image files sent straight to the API or deepfakes. Don't use FaceMatch alone for access control. See
+  [docs/privacy.md](docs/privacy.md).

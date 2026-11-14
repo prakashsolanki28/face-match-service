@@ -11,7 +11,7 @@ take precedence). Copy [`.env.example`](../.env.example) to get started. Every s
 | `PORT` | `8000` | |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, `error` |
 | `LOG_FORMAT` | `text` | `json` writes one JSON object per line (timestamp, level, request id, method, path, status, duration), for Loki, ELK or CloudWatch |
-| `API_KEY` | *(empty)* | The **admin** key (all permissions). Clients send it as `X-API-Key` or `Authorization: Bearer …`. Create limited device keys with it (see [api.md](api.md#authentication)). An API key, or at least one device key, is **required whenever `HOST` is not localhost** |
+| `API_KEY` | *(empty)* | The API key: one key with full access to every endpoint. Clients send it as `X-API-Key` or `Authorization: Bearer …` (see [api-keys.md](api-keys.md)). **Required whenever `HOST` is not localhost** |
 | `ALLOW_NO_AUTH` | `false` | Set `true` to run an open API on a network on purpose (e.g. behind a private gateway) |
 | `CORS_ORIGINS` | `*` | Comma-separated origins allowed to call the API from a browser. Restrict in production |
 | `API_DOCS` | `false` | Serve interactive API docs at `/docs` and `/redoc`. The OpenAPI spec is always at `/openapi.json` |
@@ -21,7 +21,7 @@ take precedence). Copy [`.env.example`](../.env.example) to get started. Every s
 
 | Variable | Default | Notes |
 |---|---|---|
-| `RATE_LIMIT_PER_MINUTE` | `600` | Requests per API key (or per IP on an open server). Over the limit: `429` with `Retry-After`. `0` disables. A kiosk sends about 100 frames per minute |
+| `RATE_LIMIT_PER_MINUTE` | `600` | Requests per client IP. Over the limit: `429` with `Retry-After`. `0` disables. A kiosk sends about 100 frames per minute |
 | `AUTH_FAILURES_PER_MINUTE` | `20` | Wrong or missing keys per IP before `429` |
 | `MAX_CONCURRENT_IMAGES` | `8` | Images processed at once. More requests wait up to 10 s, then get `503` with `Retry-After` |
 

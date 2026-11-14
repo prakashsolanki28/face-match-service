@@ -27,7 +27,7 @@ like any other personal data.
 | **File protection** | The database and backups are created owner-only (mode 0600). The Docker image runs as a non-root user |
 | **Encryption at rest** | Use disk or volume encryption (LUKS, BitLocker, FileVault, encrypted EBS/managed disks). FaceMatch doesn't encrypt inside the database file |
 | **Backups** | Automatic, consistent and rotated (see [deployment.md](deployment.md#backups-and-upgrades)). Store off-site copies encrypted, and include them in your retention policy: erased people remain in older backups until those rotate out |
-| **Least privilege** | Per-device API keys with scopes. A kiosk key can only mark attendance |
+| **Access control** | One API key protects the whole API. Keep it on servers and locked-down kiosks you control, and change it if a device is lost |
 
 ## Retention policy template
 
@@ -68,8 +68,8 @@ rejected at the default `LIVENESS_THRESHOLD=0.5`).
 
 - **It can't spot a digital photo sent directly to the API.** It detects re-capture artifacts (print texture,
   screen moiré), so an uploaded image file scores as "live". That's why attendance should only come from kiosks
-  with their own `attendance`-scope key, and why kiosks should only ever send live camera frames.
-  Protect kiosk keys; revoke them if a device is lost.
+  you control, and why kiosks should only ever send live camera frames.
+  Protect the API key on kiosks; change it if a device is lost.
 - **It doesn't stop virtual-camera or deepfake injection,** masks, or a determined attacker. It's a deterrent
   against casual cheating (a photo of a friend on a phone), not a security boundary for doors or payments.
 - **Accuracy depends on your camera, lighting and distance.** The model was trained on phone-camera frames, and

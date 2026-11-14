@@ -113,7 +113,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument(
         "--api-key",
         default=os.environ.get("FACE_API_KEY") or os.environ.get("API_KEY", ""),
-        help="A key with the 'read' scope.",
+        help="The service's API key (or set FACE_API_KEY).",
     )
     parser.add_argument("--report", type=Path, help="Where to write the per-person CSV.")
     args = parser.parse_args(argv)

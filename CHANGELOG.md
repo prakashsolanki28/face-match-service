@@ -11,21 +11,24 @@ FaceMatch is now an API-only service.
 - The built-in web UI (`/`, `/index.html`) and the kiosk page (`/kiosk.html`). Build kiosks and admin screens in your
   own apps against the API; docs/keys-and-audit.md includes a sample kiosk client.
 - Sign-in accounts: users, roles, login/logout, session cookies and CSRF (`/api/v1/auth/login`,
-  `/api/v1/auth/logout`, `/api/v1/users`, `face-match users`, `SESSION_*` settings). Access is by the admin
-  `API_KEY` and scoped device keys. `/api/v1/auth/me` remains and describes the calling key.
+  `/api/v1/auth/logout`, `/api/v1/users`, `face-match users`, `SESSION_*` settings).
+- Scoped device keys and permissions: `/api/v1/keys`, `face-match keys`, the `403 forbidden` error and
+  `/api/v1/auth/me`. **One API key (`API_KEY`) now gives full access to every endpoint.** Existing device keys stop
+  working, and their table is dropped from the database on upgrade. Use `GET /api/v1/auth/check` to check a key.
 - The `login` field from `/health`.
 - Datasets, sample photos and dummy data from the project and its tests.
 
 ### Added
-- docs/api-keys.md: creating keys, scopes, recommended keys per client, Postman, rotation and revocation.
-- Keys created or revoked with the `face-match keys` command are now recorded in the audit log (actor `cli`).
+- docs/api-keys.md: creating, using, changing and protecting the API key, with Postman steps.
 - api/: files to import the API into other tools: a Postman collection and environment (every endpoint with
   example values, file fields, auth and saved ids) and `openapi.json`. They are also attached to each release.
 - `face-match export-api` regenerates them; `--check` reports when they are out of date.
-- The OpenAPI spec documents each endpoint's permission (`x-required-scope` and the description), Bearer auth,
-  file fields as `format: binary`, and every parameter.
+- The OpenAPI spec documents which endpoints need the API key, Bearer auth, file fields as `format: binary`, and
+  every parameter.
 
 ### Changed
+- Rate limits (`RATE_LIMIT_PER_MINUTE`) apply per client IP, since every client shares the one key.
+- Audit log entries made through the API have the actor `api_key`.
 - OpenAPI operation ids are now the route names (e.g. `enroll_person` instead of
   `enroll_person_api_v1_persons_post`), and endpoints have short summaries. Regenerate API clients made from
   1.x specs.

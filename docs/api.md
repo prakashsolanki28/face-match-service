@@ -12,38 +12,17 @@ and environment, plus `openapi.json`, for Postman, Insomnia, Bruno, Hoppscotch, 
 
 ## Authentication
 
-Full guide: [api-keys.md](api-keys.md) (creating keys, choosing scopes, Postman, rotation).
+Full guide: [api-keys.md](api-keys.md) (creating the key, Postman, changing it, keeping it safe).
 
-Send a key as `X-API-Key: <key>` or `Authorization: Bearer <key>`.
-
-- **Admin key:** the `API_KEY` setting. It can do everything, including creating other keys.
-- **Device keys:** limited keys you create for each kiosk, integration or monitoring system. Only a hash is stored;
-  the token is shown once.
-
-| Scope | Allows |
-|---|---|
-| `attendance` | `POST /api/v1/attendance`. Give kiosks only this |
-| `recognize` | `POST /api/v1/detect`, `POST /api/v1/recognize` |
-| `read` | List people, attendance and summaries |
-| `enroll` | Create, update and delete people and photos |
-| `metrics` | `GET /metrics` |
-| `admin` | Everything, including keys and webhook deliveries |
+FaceMatch has **one API key**: the `API_KEY` setting. Send it as `X-API-Key: <key>` or
+`Authorization: Bearer <key>`. It gives full access to every endpoint; there are no other keys or permissions.
 
 ```bash
-curl -X POST localhost:8000/api/v1/keys -H "X-API-Key: $API_KEY" \
-  -H "Content-Type: application/json" -d '{"name": "gate-1 kiosk", "scopes": ["attendance"]}'
-# → {"key": {"id": "3f9c…", "prefix": "fm_Xr2a9b", "scopes": ["attendance"], …}, "token": "fm_Xr2a9b…"}
-
-curl localhost:8000/api/v1/keys -H "X-API-Key: $API_KEY"                    # list (tokens never shown again)
-curl -X DELETE localhost:8000/api/v1/keys/3f9c… -H "X-API-Key: $API_KEY"    # revoke immediately
+curl localhost:8000/api/v1/auth/check -H "X-API-Key: $API_KEY"
+# → {"authenticated": true, "auth_required": true}
 ```
 
-`GET /api/v1/auth/me` returns the name and scopes of the key you call it with.
-
-You can also manage keys from the server's shell: `face-match keys create --name gate-1 --scopes attendance`,
-`face-match keys list` and `face-match keys revoke <id>`.
-
-**Limits:** each key (or IP on an open server) gets `RATE_LIMIT_PER_MINUTE` requests. Repeated bad keys from one IP
+**Limits:** each client IP gets `RATE_LIMIT_PER_MINUTE` requests. Repeated bad keys from one IP
 are throttled, and when the server is saturated with images it answers `503`. All of these include a `Retry-After`
 header. Every response has an `X-Request-ID` header (pass your own to correlate logs).
 
@@ -63,12 +42,11 @@ header. Every response has an `X-Request-ID` header (pass your own to correlate 
 | `POST` | `/api/v1/attendance` | Identify faces **and** log attendance: `image`, optional `device_id` |
 | `GET` | `/api/v1/attendance?date=YYYY-MM-DD&person_id=&limit=` | Attendance events, newest first |
 | `GET` | `/api/v1/attendance/summary?date=YYYY-MM-DD` | One row per person: first seen, last seen, sightings |
-| `POST` / `GET` / `DELETE` | `/api/v1/keys` | Manage device keys (admin) |
-| `GET` | `/api/v1/webhooks?status=pending\|delivered\|failed` | Webhook delivery queue (admin) |
-| `POST` | `/api/v1/webhooks/{id}/retry` | Retry a failed delivery (admin) |
-| `GET` | `/metrics` | Prometheus metrics (`metrics` scope) |
-| `GET` | `/api/v1/auth/me` | Which key this is and its scopes |
-| `GET` | `/api/v1/audit?action=&actor=&limit=&offset=` | Audit log, newest first (admin) |
+| `GET` | `/api/v1/webhooks?status=pending\|delivered\|failed` | Webhook delivery queue |
+| `POST` | `/api/v1/webhooks/{id}/retry` | Retry a failed delivery |
+| `GET` | `/metrics` | Prometheus metrics |
+| `GET` | `/api/v1/auth/check` | Check that your API key works |
+| `GET` | `/api/v1/audit?action=&actor=&limit=&offset=` | Audit log, newest first |
 
 ## Recognize
 
@@ -169,7 +147,6 @@ Every error has the same shape and a stable `code`:
 |---|---|
 | 400 | `invalid_image` |
 | 401 | `unauthorized` |
-| 403 | `forbidden` (the key lacks the scope) |
 | 429 | `rate_limited` (see `Retry-After`) |
 | 503 | `busy` (see `Retry-After`) |
 | 404 | `person_not_found` |

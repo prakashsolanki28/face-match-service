@@ -36,7 +36,6 @@ OPENAPI_FILE = "openapi.json"
 # Postman scripts that keep the ids of things just created, so the next requests can use them.
 _SAVE_ID = {
     "enroll_person": ("personId", "person.id", 201),
-    "create_key": ("keyId", "key.id", 201),
 }
 
 
@@ -230,14 +229,13 @@ def build_postman_collection(spec: Dict[str, Any]) -> Dict[str, Any]:
             f"Every FaceMatch {__version__} endpoint, ready to send.",
             "",
             "1. Import `FaceMatch.postman_environment.json` too and select the **FaceMatch** environment. "
-            "Set `baseUrl` to your server and `apiKey` to a key: a device key with only the scopes you need.",
-            "2. Send **System → Health check**, then **Auth → Who am I** to check the key.",
+            "Set `baseUrl` to your server and `apiKey` to your API key (the `API_KEY` setting).",
+            "2. Send **System → Health check**, then **Auth → Check API key**.",
             "3. For photos, open **Body → form-data** and choose a file in each `image` / `images` row.",
             "",
-            "Enrolling a person or creating a key saves the new id in `personId` / `keyId`, so the requests "
-            "that need an id work straight away. Each request says which permission it needs.",
+            "Enrolling a person saves the new id in `personId` for the requests that need it.",
             "",
-            f"Keys and permissions: {REPO}/blob/main/docs/api-keys.md",
+            f"The API key: {REPO}/blob/main/docs/api-keys.md",
             "",
             "Generated from the OpenAPI spec by `face-match export-api`.",
         ]

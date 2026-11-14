@@ -140,26 +140,6 @@ class AttendanceSummary(BaseModel):
     events: int
 
 
-class ApiKey(BaseModel):
-    id: str
-    name: str
-    prefix: str = Field(description="First characters of the token, to recognise it.")
-    scopes: List[str]
-    created_at: str
-    last_used_at: Optional[str]
-    revoked_at: Optional[str]
-
-
-class ApiKeyCreate(BaseModel):
-    name: str = Field(max_length=100, examples=["gate-1-kiosk"])
-    scopes: List[str] = Field(examples=[["attendance"]])
-
-
-class ApiKeyCreated(BaseModel):
-    key: ApiKey
-    token: str = Field(description="Shown only once. Store it securely.")
-
-
 class WebhookDelivery(BaseModel):
     id: int
     event_id: str
@@ -172,10 +152,9 @@ class WebhookDelivery(BaseModel):
     next_attempt_at: float
 
 
-class WhoAmI(BaseModel):
-    kind: Literal["admin_key", "key", "open"]
-    name: str
-    scopes: List[str]
+class AuthCheck(BaseModel):
+    authenticated: bool = Field(description="True: the request carried the correct API key.")
+    auth_required: bool = Field(description="False only on a local server running without API_KEY.")
 
 
 class AuditEntry(BaseModel):

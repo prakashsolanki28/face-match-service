@@ -1,6 +1,6 @@
 """HTTP routes for /api/v1. Handlers are sync, so FastAPI runs them in a thread pool.
 
-Every route declares the permission (scope) it needs; see security.SCOPES.
+Every route needs the API key (the API_KEY setting), which gives full access.
 """
 
 from __future__ import annotations
@@ -14,12 +14,10 @@ from fastapi.security import APIKeyHeader
 
 from .observability import request_id_var
 from .schemas import (
-    ApiKey,
-    ApiKeyCreate,
-    ApiKeyCreated,
     AttendanceEvent,
     AttendanceSummary,
     AuditEntry,
+    AuthCheck,
     DetectResponse,
     EnrollResponse,
     ErrorResponse,
@@ -27,9 +25,8 @@ from .schemas import (
     Person,
     RecognizeResponse,
     WebhookDelivery,
-    WhoAmI,
 )
-from .security import OPEN_ACCESS, Busy, Principal, RateLimited
+from .security import Busy, RateLimited
 from .service import FaceService, ImageInput, ServiceError
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -57,41 +54,25 @@ def authenticate(
     request: Request,
     x_api_key: Optional[str] = Depends(_api_key_header),
     authorization: Optional[str] = Header(None, include_in_schema=False),
-) -> Principal:
-    """Resolve the caller from `X-API-Key` or `Authorization: Bearer <key>`, then rate-limit them."""
+) -> None:
+    """Check the API key (`X-API-Key` or `Authorization: Bearer <key>`), then rate-limit the client IP."""
     state = request.app.state
     token = x_api_key
     if not token and authorization and authorization.lower().startswith("bearer "):
         token = authorization[7:].strip()
     ip = client_ip(request)
 
-    if not state.keys.auth_enabled():
-        principal = OPEN_ACCESS
-    else:
-        principal = state.keys.authenticate(token) if token else None
-        if principal is None:
-            try:
-                state.limiter.auth_failure(ip)
-            except RateLimited as exc:
-                raise _rate_limited(request, exc) from None
-            raise ServiceError(401, "unauthorized", "Missing or invalid API key (X-API-Key header).")
-    bucket = ip if principal is OPEN_ACCESS else (principal.key_id or principal.name)
+    if state.auth.enabled and not state.auth.check(token):
+        try:
+            state.limiter.auth_failure(ip)
+        except RateLimited as exc:
+            raise _rate_limited(request, exc) from None
+        raise ServiceError(401, "unauthorized", "Missing or invalid API key (X-API-Key header).")
+    # Per client IP: every client shares the one key, so a per-key limit would throttle them all together.
     try:
-        state.limiter.check(bucket)
+        state.limiter.check(ip)
     except RateLimited as exc:
         raise _rate_limited(request, exc) from None
-    request.state.principal = principal
-    return principal
-
-
-def require(scope: str):
-    def check(principal: Principal = Depends(authenticate)) -> Principal:
-        if not principal.allows(scope):
-            raise ServiceError(403, "forbidden", f"This API key lacks the '{scope}' permission.")
-        return principal
-
-    check.required_scope = scope  # read by openapi.py to document each endpoint's permission
-    return Depends(check)
 
 
 def audit(
@@ -100,11 +81,10 @@ def audit(
     target_type: Optional[str] = None,
     target_id: Optional[str] = None,
     details: Optional[dict] = None,
-    actor: Optional[str] = None,
 ) -> None:
-    principal = getattr(request.state, "principal", OPEN_ACCESS)
+    """Record a change. The actor is `api_key`, or `open` on a local server without a key."""
     request.app.state.service.db.add_audit(
-        actor or principal.label,
+        "api_key" if request.app.state.auth.enabled else "open",
         action,
         target_type,
         target_id,
@@ -137,7 +117,7 @@ def _check_count(images: List[UploadFile]) -> None:
         raise ServiceError(422, "too_many_images", "Send at most 10 images per request.")
 
 
-_errors = {code: {"model": ErrorResponse} for code in (400, 401, 403, 413, 422, 429, 503)}
+_errors = {code: {"model": ErrorResponse} for code in (400, 401, 413, 422, 429, 503)}
 
 # Shared parameter descriptions (they appear in /openapi.json and the Postman collection).
 _PHOTO = "A photo: JPEG, PNG, WebP or BMP."
@@ -145,7 +125,8 @@ _PHOTOS = "1-10 photos: JPEG, PNG, WebP or BMP."
 PersonId = Annotated[str, Path(description="The person's id, returned when they were enrolled.")]
 Offset = Annotated[int, Query(ge=0, description="Skip this many results (for paging).")]
 
-router = APIRouter(prefix="/api/v1", responses=_errors)
+# Every /api/v1 route needs the API key.
+router = APIRouter(prefix="/api/v1", responses=_errors, dependencies=[Depends(authenticate)])
 
 
 # ---- faces -------------------------------------------------------------------
@@ -156,7 +137,6 @@ router = APIRouter(prefix="/api/v1", responses=_errors)
     summary="Detect faces",
     response_model=DetectResponse,
     tags=["faces"],
-    dependencies=[require("recognize")],
 )
 def detect_faces(
     request: Request,
@@ -173,7 +153,6 @@ def detect_faces(
     summary="Recognize faces",
     response_model=RecognizeResponse,
     tags=["faces"],
-    dependencies=[require("recognize")],
 )
 def recognize_faces(
     request: Request,
@@ -196,7 +175,6 @@ def recognize_faces(
     status_code=201,
     tags=["persons"],
     responses={409: {"model": ErrorResponse}},
-    dependencies=[require("enroll")],
 )
 def enroll_person(
     request: Request,
@@ -234,7 +212,6 @@ def enroll_person(
     summary="List people",
     response_model=List[Person],
     tags=["persons"],
-    dependencies=[require("read")],
 )
 def list_persons(
     response: Response,
@@ -257,7 +234,6 @@ def list_persons(
     summary="Get a person",
     response_model=Person,
     tags=["persons"],
-    dependencies=[require("read")],
 )
 def get_person(person_id: PersonId, service: FaceService = Depends(get_service)):
     """One person, by the id returned at enrollment."""
@@ -270,7 +246,6 @@ def get_person(person_id: PersonId, service: FaceService = Depends(get_service))
     response_model=EnrollResponse,
     tags=["persons"],
     responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
-    dependencies=[require("enroll")],
 )
 def add_faces(
     request: Request,
@@ -292,7 +267,6 @@ def add_faces(
     response_model=EnrollResponse,
     tags=["persons"],
     responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
-    dependencies=[require("enroll")],
 )
 def replace_faces(
     request: Request,
@@ -322,7 +296,6 @@ def replace_faces(
     status_code=204,
     tags=["persons"],
     responses={404: {"model": ErrorResponse}},
-    dependencies=[require("enroll")],
 )
 def delete_person(
     request: Request,
@@ -354,7 +327,6 @@ def delete_person(
     summary="Mark attendance",
     response_model=MarkAttendanceResponse,
     tags=["attendance"],
-    dependencies=[require("attendance")],
 )
 def mark_attendance(
     request: Request,
@@ -379,7 +351,6 @@ def mark_attendance(
     summary="List attendance events",
     response_model=List[AttendanceEvent],
     tags=["attendance"],
-    dependencies=[require("read")],
 )
 def list_attendance(
     day: Optional[date] = Query(
@@ -399,7 +370,6 @@ def list_attendance(
     summary="Daily attendance summary",
     response_model=List[AttendanceSummary],
     tags=["attendance"],
-    dependencies=[require("read")],
 )
 def attendance_summary(
     day: Optional[date] = Query(
@@ -411,64 +381,7 @@ def attendance_summary(
     return service.attendance_summary(day.isoformat() if day else None)
 
 
-# ---- admin: API keys -----------------------------------------------------------
-
-
-def _key(row) -> ApiKey:
-    return ApiKey(**{**row, "scopes": row["scopes"].split()})
-
-
-@router.post(
-    "/keys",
-    summary="Create an API key",
-    response_model=ApiKeyCreated,
-    status_code=201,
-    tags=["admin"],
-    dependencies=[require("admin")],
-)
-def create_key(body: ApiKeyCreate, request: Request, service: FaceService = Depends(get_service)):
-    """Create a scoped API key, e.g. `{"name": "gate-1", "scopes": ["attendance"]}` for a kiosk.
-
-    The token is returned only once.
-    """
-    row, token = service.create_api_key(body.name, body.scopes)
-    request.app.state.keys.invalidate()
-    audit(request, "key.create", "key", row["id"], {"name": row["name"], "scopes": row["scopes"].split()})
-    return ApiKeyCreated(key=_key(row), token=token)
-
-
-@router.get(
-    "/keys",
-    summary="List API keys",
-    response_model=List[ApiKey],
-    tags=["admin"],
-    dependencies=[require("admin")],
-)
-def list_keys(service: FaceService = Depends(get_service)):
-    """All API keys, active and revoked. Tokens are never returned."""
-    return [_key(r) for r in service.db.list_api_keys()]
-
-
-@router.delete(
-    "/keys/{key_id}",
-    summary="Revoke an API key",
-    status_code=204,
-    tags=["admin"],
-    dependencies=[require("admin")],
-)
-def revoke_key(
-    key_id: Annotated[str, Path(description="The key's id.")],
-    request: Request,
-    service: FaceService = Depends(get_service),
-):
-    """Revoke a key immediately."""
-    service.revoke_api_key(key_id)
-    request.app.state.keys.invalidate()
-    audit(request, "key.revoke", "key", key_id)
-    return Response(status_code=204)
-
-
-# ---- admin: webhook deliveries ---------------------------------------------------
+# ---- webhook deliveries ---------------------------------------------------
 
 
 @router.get(
@@ -476,7 +389,6 @@ def revoke_key(
     summary="List webhook deliveries",
     response_model=List[WebhookDelivery],
     tags=["admin"],
-    dependencies=[require("admin")],
 )
 def list_webhooks(
     status: Optional[Literal["pending", "delivered", "failed"]] = Query(
@@ -495,7 +407,6 @@ def list_webhooks(
     summary="Retry a webhook delivery",
     status_code=202,
     tags=["admin"],
-    dependencies=[require("admin")],
 )
 def retry_webhook(
     delivery_id: Annotated[int, Path(description="The delivery's id, from GET /webhooks.")],
@@ -508,16 +419,18 @@ def retry_webhook(
     return Response(status_code=202)
 
 
-# ---- identity ---------------------------------------------------------------------------------
+# ---- auth ----------------------------------------------------------------------------------------
 
 
-@router.get("/auth/me", summary="Who am I (check your key)", response_model=WhoAmI, tags=["auth"])
-def whoami(principal: Principal = Depends(authenticate)):
-    """Which key this is and what it may do (useful to check a kiosk or integration key)."""
-    return WhoAmI(kind=principal.kind, name=principal.name, scopes=sorted(principal.scopes))
+@router.get("/auth/check", summary="Check API key", response_model=AuthCheck, tags=["auth"])
+def check_api_key(request: Request):
+    """Answers only when the request carries the right API key (otherwise 401)."""
+    return AuthCheck(
+        authenticated=request.app.state.auth.enabled, auth_required=request.app.state.auth.enabled
+    )
 
 
-# ---- admin: audit log ------------------------------------------------------------------------
+# ---- audit log ------------------------------------------------------------------------
 
 
 @router.get(
@@ -525,13 +438,12 @@ def whoami(principal: Principal = Depends(authenticate)):
     summary="Audit log",
     response_model=List[AuditEntry],
     tags=["admin"],
-    dependencies=[require("admin")],
 )
 def list_audit(
     limit: int = Query(100, ge=1, le=1000, description="Page size."),
     offset: Offset = 0,
     action: Optional[str] = Query(None, description="Filter, e.g. person.* or key.revoke"),
-    actor: Optional[str] = Query(None, description="Exact actor, e.g. admin_key or key:gate-1#3f9c…"),
+    actor: Optional[str] = Query(None, description="Exact actor, e.g. api_key."),
     service: FaceService = Depends(get_service),
 ):
     """Who changed what: enrollments, photo changes, deletions, keys, webhook retries. Newest first."""

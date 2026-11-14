@@ -1,27 +1,20 @@
 # Kiosks and the audit log
 
-FaceMatch is an API-only service. Every caller (your portal backend, each kiosk, monitoring) authenticates
-with an API key.
-
-## API keys
-
-Creating keys, choosing permissions (scopes), using keys in curl or Postman, and rotating or revoking them are
-covered in **[api-keys.md](api-keys.md)**. In short, kiosks get a device key with only the `attendance` scope:
-
-```bash
-face-match keys create --name "gate-1-kiosk" --scopes attendance
-```
+FaceMatch is an API-only service. Every caller (your portal backend, each kiosk, monitoring) sends the one
+API key, which gives full access. Setting, using and changing the key is covered in
+**[api-keys.md](api-keys.md)**.
 
 ## Building a kiosk
 
 A kiosk is your own app (tablet, laptop or small PC with a camera) that sends camera frames to
-`POST /api/v1/attendance` with an `attendance`-only device key, and shows the result. A minimal headless client
+`POST /api/v1/attendance` with the API key, and shows the result. A minimal headless client
 in Python with OpenCV:
 
 ```python
-import time, cv2, requests
+import os, time, cv2, requests
 
-API, KEY, DEVICE = "https://face.example.com", "fm_...", "gate-1"
+API, DEVICE = "https://face.example.com", "gate-1"
+KEY = os.environ["FACE_API_KEY"]  # the API key; keep it out of the source code
 camera = cv2.VideoCapture(0)
 while True:
     ok, frame = camera.read()
@@ -36,8 +29,8 @@ while True:
         data={"device_id": DEVICE},
         timeout=10,
     )
-    if res.status_code in (401, 403):
-        raise SystemExit("Key revoked or lacks the attendance scope")
+    if res.status_code == 401:
+        raise SystemExit("API key rejected (was it changed?)")
     if res.status_code in (429, 503):
         time.sleep(int(res.headers.get("Retry-After", 2)))
         continue
@@ -61,12 +54,14 @@ Guidelines for production kiosks:
 - Send about one frame every 0.5–1 s. The cooldown (`ATTENDANCE_COOLDOWN_SECONDS`) prevents duplicates.
 - Show "Not recognised" only after a few unknown frames in a row, to avoid flicker.
 - Honour `Retry-After` on `429`/`503`, back off on network errors, and stop if the key is rejected.
-- A browser-based kiosk needs HTTPS (or localhost) for camera access, and should keep its key in a backend or
-  device-protected storage. Kiosk keys should only ever have the `attendance` scope.
+- **The key on a kiosk opens the whole API**, so lock the device down: kiosk mode, no browsing, disk encryption.
+  If a kiosk is lost or stolen, change the key straight away (see [api-keys.md](api-keys.md#3-change-rotate-the-key)).
+- A browser-based kiosk needs HTTPS (or localhost) for camera access. Don't put the key in the page's
+  JavaScript: let the browser talk to your own backend, and have the backend call FaceMatch with the key.
 
 ## Audit log
 
-`GET /api/v1/audit` (admin) records who did what: enrollments, photo changes, deletions (including whether history
-was erased), device keys created or revoked, and webhook retries. Each entry has the actor (`admin_key` or
-`key:<name>#<id>`), time, IP and request id. Filter with `?action=person.*` or `?actor=key:portal-sync#3f9c…`.
-Entries are kept forever by default; set `AUDIT_RETENTION_DAYS` to limit that.
+`GET /api/v1/audit` records every change: enrollments, photo changes, deletions (including whether history was
+erased) and webhook retries. Each entry has the actor (`api_key`), time, client IP and request id, so you can
+tell which device made a change by its IP. Filter with `?action=person.*`. Entries are kept forever by default;
+set `AUDIT_RETENTION_DAYS` to limit that.
