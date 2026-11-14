@@ -130,7 +130,7 @@ def decide(scores: np.ndarray, threshold: float, margin: float) -> np.ndarray:
 def evaluate(names, usable, scores, probes, threshold, margin) -> Dict[str, float]:
     choice = decide(scores, threshold, margin)
     counts = Counter()
-    for probe, col in zip(usable, choice):
+    for probe, col in zip(usable, choice, strict=True):
         if probe.truth is None:
             counts["stranger_accepted" if col >= 0 else "stranger_rejected"] += 1
         elif col < 0:
@@ -267,7 +267,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             log("")
 
             choice = decide(scores, base.match_threshold, base.match_margin)
-            for probe, col, row in zip(usable, choice, scores):
+            for probe, col, row in zip(usable, choice, scores, strict=True):
                 predicted = names[col] if col >= 0 else None
                 if predicted is not None and predicted != probe.truth:
                     failures.append(

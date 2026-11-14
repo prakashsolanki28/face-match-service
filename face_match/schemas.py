@@ -39,7 +39,7 @@ class PersonMatch(BaseModel):
     similarity: float = Field(description="Cosine similarity to the closest enrolled face.")
 
 
-UnknownReason = Literal["too_small", "below_threshold", "ambiguous", "nobody_enrolled"]
+UnknownReason = Literal["too_small", "below_threshold", "ambiguous", "nobody_enrolled", "liveness_failed"]
 
 
 class RecognizedFace(DetectedFace):
@@ -54,10 +54,15 @@ class RecognizedFace(DetectedFace):
         description="/recognize only, for testing and tuning: the nearest enrolled person when "
         "match is null. Never returned by /attendance, so kiosks don't reveal near-misses.",
     )
+    liveness_score: Optional[float] = Field(
+        default=None,
+        description="Probability that the face is live (not a photo or screen). Set on /attendance when "
+        "liveness is on, and on /recognize with ?liveness=true.",
+    )
 
 
 class AttendanceResult(BaseModel):
-    status: Literal["marked", "already_marked", "unknown", "too_small"]
+    status: Literal["marked", "already_marked", "unknown", "too_small", "liveness_failed"]
     event_id: Optional[int] = None
     timestamp: Optional[str] = Field(
         default=None, description="New event time, or the earlier event when already_marked."
@@ -135,6 +140,38 @@ class AttendanceSummary(BaseModel):
     events: int
 
 
+class ApiKey(BaseModel):
+    id: str
+    name: str
+    prefix: str = Field(description="First characters of the token, to recognise it.")
+    scopes: List[str]
+    created_at: str
+    last_used_at: Optional[str]
+    revoked_at: Optional[str]
+
+
+class ApiKeyCreate(BaseModel):
+    name: str = Field(max_length=100, examples=["gate-1 kiosk"])
+    scopes: List[str] = Field(examples=[["attendance"]])
+
+
+class ApiKeyCreated(BaseModel):
+    key: ApiKey
+    token: str = Field(description="Shown only once. Store it securely.")
+
+
+class WebhookDelivery(BaseModel):
+    id: int
+    event_id: str
+    event: str
+    status: Literal["pending", "delivered", "failed"]
+    attempts: int
+    last_error: Optional[str]
+    created_at: float
+    delivered_at: Optional[float]
+    next_attempt_at: float
+
+
 class Health(BaseModel):
     status: Literal["ok"]
     version: str
@@ -143,6 +180,7 @@ class Health(BaseModel):
     embeddings: int
     match_threshold: float
     min_face_size: int
+    liveness: bool
     auth_required: bool
 
 

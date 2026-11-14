@@ -16,6 +16,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     MODELS_DIR=/opt/face-match/models \
     AUTO_DOWNLOAD_MODELS=false
 
+# Pick up OS security fixes released after the base image was built.
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /opt/face-match
 COPY pyproject.toml README.md LICENSE NOTICE ./
 COPY face_match ./face_match

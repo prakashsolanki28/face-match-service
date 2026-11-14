@@ -63,7 +63,8 @@ Your kiosk, mobile app or a backend job that reads an IP camera posts images:
 Set `WEBHOOK_URL` (and `WEBHOOK_SECRET`). Every new attendance event is POSTed:
 
 ```json
-{ "event": "attendance.marked",
+{ "id": "5b0c3c1e9a7f4f0c8f4c2b1a6d9e8f70",
+  "event": "attendance.marked",
   "data": { "id": 42, "person_id": "9f1c…", "external_id": "EMP-1024", "name": "Asha Verma",
             "similarity": 0.71, "device_id": "main-gate", "timestamp": "2026-11-14T09:22:17+05:30", "day": "2026-11-14" } }
 ```
@@ -88,7 +89,15 @@ $expected = 'sha256=' . hash_hmac('sha256', file_get_contents('php://input'), ge
 $valid = hash_equals($expected, $_SERVER['HTTP_X_SIGNATURE_256'] ?? '');
 ```
 
-Delivery is best effort (one attempt, logged on failure). For guaranteed completeness, also reconcile with polling.
+**Reliable delivery:** events are stored in the same database transaction as the attendance record, then
+delivered by a background worker. Anything other than a `2xx` response is retried with exponential backoff
+(`WEBHOOK_MAX_ATTEMPTS`, about 10 hours by default), and deliveries survive restarts.
+
+- Every delivery of the same event carries the same `id` (also in the `X-Event-Id` header). **Store it and ignore
+  repeats**, because a retry can arrive after your endpoint processed the first attempt but timed out replying.
+- Respond quickly with `2xx` and process asynchronously if your handling is slow (the timeout is 5 s).
+- Failed deliveries are listed at `GET /api/v1/webhooks?status=failed` and can be retried with
+  `POST /api/v1/webhooks/{id}/retry`.
 
 ### Polling
 
@@ -118,4 +127,5 @@ const res = await fetch("https://face.example.com/api/v1/recognize", {
 const { faces } = await res.json();
 ```
 
-Don't put the API key in public browser code. Call FaceMatch from your backend, or from a kiosk you control.
+Don't put the API key in public browser code. Call FaceMatch from your backend, or from a kiosk you control, and
+give every client its own key with only the scopes it needs (see [api.md](api.md#authentication)).

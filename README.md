@@ -2,15 +2,17 @@
 
 [![CI](https://github.com/prakashsolanki28/face-match-service/actions/workflows/ci.yml/badge.svg)](https://github.com/prakashsolanki28/face-match-service/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 
 **A lightweight, self-hosted face detection and face matching service.** Enroll people, then send any photo or
 camera frame and get back *who is in it*, over a simple REST API that any portal, app or backend can call.
 Built-in attendance logging, bulk import and signed webhooks cover the common "who arrived today?" use case.
 
-- **Light:** about 110 MB of RAM, about 10 ms per frame on CPU, 39 MB of models. No GPU, no compiler, no database server.
-- **Safe by design:** it refuses to guess between look-alikes, tells you *why* a face is unknown, stores embeddings
-  rather than photos, and won't run open on a network without an API key.
+- **Light:** about 110 MB of RAM, about 10 ms per frame on CPU, 43 MB of models. No GPU, no compiler, no database server.
+- **Safe by design:** it refuses to guess between look-alikes, tells you *why* a face is unknown, rejects photos
+  and screens held up to the camera (liveness), and stores embeddings rather than photos.
+- **Production features:** per-device API keys with permissions, rate limiting, webhooks that retry until
+  delivered, Prometheus metrics, JSON logs, automatic backups, retention and right-to-erasure.
 - **Commercially usable:** Apache-2.0 code, with permissively licensed models (YuNet: MIT, SFace: Apache-2.0).
 - **Measured:** 97.9% correct with 5 photos per person and **no wrong names** on a 31-person, 2,500-photo
   evaluation. See [docs/accuracy.md](docs/accuracy.md).
@@ -73,7 +75,9 @@ back to your records.
 | **Detection** | Boxes and 5 landmarks for every face (`/detect`) |
 | **Matching** | 1:N identification against everyone enrolled (`/recognize`), with a reason for every unknown face |
 | **Enrollment** | Create, add or replace photos. Quality checks reject photos with no face, several faces, a face too small, inconsistent photos or duplicates |
-| **Attendance** | `/attendance` logs check-ins, with a cooldown, daily present/absent summary and webhooks |
+| **Attendance** | `/attendance` logs check-ins, with liveness (anti-spoofing), a cooldown, daily present/absent summary and webhooks that retry until delivered |
+| **Security** | Admin key plus scoped device keys (a kiosk key can only mark attendance), rate limiting, overload protection, secure defaults |
+| **Operations** | Prometheus `/metrics`, JSON logs with request ids, automatic backups, retention, `face-match pilot-report` for go-live validation |
 | **Bulk import** | `face-match import` enrolls hundreds of people from a CSV roster and photo folder, with a report |
 | **Evaluation** | `face-match evaluate` measures accuracy on your own photos before you go live |
 | **Integration** | REST + OpenAPI, API-key auth, CORS, HMAC-signed webhooks, stable error codes |
@@ -85,6 +89,7 @@ back to your records.
 - [Deployment](docs/deployment.md): Docker, HTTPS, resources, backups
 - [Integrating with a portal](docs/integration.md): IDs, webhooks, bulk import, keeping photos up to date
 - [Attendance guide](docs/attendance.md): schools and offices with hundreds of people
+- [Pilot guide](docs/pilot.md): validate on your own people before go-live
 - [Accuracy](docs/accuracy.md): how it's measured, results, tuning
 - [Privacy & security](docs/privacy.md): biometric data, consent, liveness
 
@@ -93,9 +98,12 @@ back to your records.
 ```
 image ─▶ YuNet (detect + landmarks) ─▶ align ─▶ SFace (128-d embedding) ─▶ cosine match vs. enrolled
                                                                             threshold + margin ─▶ name | unknown
+                          /attendance only: MiniFASNet liveness ─▶ live? record : liveness_failed
 ```
 
-Both models come from the [OpenCV Model Zoo](https://github.com/opencv/opencv_zoo) and run on OpenCV's DNN module.
+Detection and recognition models come from the [OpenCV Model Zoo](https://github.com/opencv/opencv_zoo); the
+liveness models from [Minivision](https://github.com/minivision-ai/Silent-Face-Anti-Spoofing) (see the licence note in
+[docs/privacy.md](docs/privacy.md#liveness-detection-anti-spoofing)). All run on OpenCV's DNN module.
 They're downloaded on first run and verified against pinned SHA-256 hashes. Embeddings live in SQLite and an
 in-memory index, which searches 10,000 faces in about 0.5 ms.
 

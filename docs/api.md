@@ -2,9 +2,42 @@
 
 The service publishes interactive OpenAPI docs at `/docs` and the raw schema at `/openapi.json`.
 
-- All endpoints except `/health` are under `/api/v1` and need the `X-API-Key` header when `API_KEY` is set.
+- All endpoints except `/health` and `/metrics` are under `/api/v1`. See [Authentication](#authentication).
 - Images are sent as `multipart/form-data` (JPEG, PNG, WebP or BMP, up to `MAX_UPLOAD_MB`). EXIF rotation is applied.
 - Coordinates in responses are in pixels of the image you sent.
+
+## Authentication
+
+Send a key as `X-API-Key: <key>` or `Authorization: Bearer <key>`.
+
+- **Admin key:** the `API_KEY` setting. It can do everything, including creating other keys.
+- **Device keys:** limited keys you create for each kiosk, integration or monitoring system. Only a hash is stored;
+  the token is shown once.
+
+| Scope | Allows |
+|---|---|
+| `attendance` | `POST /api/v1/attendance`. Give kiosks only this |
+| `recognize` | `POST /api/v1/detect`, `POST /api/v1/recognize` |
+| `read` | List people, attendance and summaries |
+| `enroll` | Create, update and delete people and photos |
+| `metrics` | `GET /metrics` |
+| `admin` | Everything, including keys and webhook deliveries |
+
+```bash
+curl -X POST localhost:8000/api/v1/keys -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" -d '{"name": "gate-1 kiosk", "scopes": ["attendance"]}'
+# → {"key": {"id": "3f9c…", "prefix": "fm_Xr2a9b", "scopes": ["attendance"], …}, "token": "fm_Xr2a9b…"}
+
+curl localhost:8000/api/v1/keys -H "X-API-Key: $API_KEY"                    # list (tokens never shown again)
+curl -X DELETE localhost:8000/api/v1/keys/3f9c… -H "X-API-Key: $API_KEY"    # revoke immediately
+```
+
+You can also manage keys from the server's shell: `face-match keys create --name gate-1 --scopes attendance`,
+`face-match keys list` and `face-match keys revoke <id>`.
+
+**Limits:** each key (or IP on an open server) gets `RATE_LIMIT_PER_MINUTE` requests. Repeated bad keys from one IP
+are throttled, and when the server is saturated with images it answers `503`. All of these include a `Retry-After`
+header. Every response has an `X-Request-ID` header (pass your own to correlate logs).
 
 ## Endpoints
 
@@ -12,16 +45,20 @@ The service publishes interactive OpenAPI docs at `/docs` and the raw schema at 
 |---|---|---|
 | `GET` | `/health` | Status, version, engine, number of people and embeddings, thresholds, whether auth is required |
 | `POST` | `/api/v1/detect` | Faces, boxes and 5 landmarks. No identity lookup |
-| `POST` | `/api/v1/recognize` | Identify every face. Records nothing |
+| `POST` | `/api/v1/recognize?liveness=` | Identify every face. Records nothing. `liveness=true` adds a `liveness_score` |
 | `POST` | `/api/v1/persons` | Enroll: `name`, optional `external_id`, 1–10 `images`, optional `allow_duplicate` |
 | `GET` | `/api/v1/persons` | List people. `?external_id=` looks one up by your ID |
 | `GET` | `/api/v1/persons/{id}` | One person |
 | `POST` | `/api/v1/persons/{id}/faces` | Add photos (they must match the person's existing photos) |
 | `PUT` | `/api/v1/persons/{id}/faces` | Replace all photos. All-or-nothing: if no new photo is usable, nothing changes |
-| `DELETE` | `/api/v1/persons/{id}` | Delete a person and their face data. Past attendance events are kept |
+| `DELETE` | `/api/v1/persons/{id}?erase_history=` | Delete a person and their face data. Attendance history is kept unless `erase_history=true` (right to erasure) |
 | `POST` | `/api/v1/attendance` | Identify faces **and** log attendance: `image`, optional `device_id` |
 | `GET` | `/api/v1/attendance?date=YYYY-MM-DD&person_id=&limit=` | Attendance events, newest first |
 | `GET` | `/api/v1/attendance/summary?date=YYYY-MM-DD` | One row per person: first seen, last seen, sightings |
+| `POST` / `GET` / `DELETE` | `/api/v1/keys` | Manage device keys (admin) |
+| `GET` | `/api/v1/webhooks?status=pending\|delivered\|failed` | Webhook delivery queue (admin) |
+| `POST` | `/api/v1/webhooks/{id}/retry` | Retry a failed delivery (admin) |
+| `GET` | `/metrics` | Prometheus metrics (`metrics` scope) |
 
 ## Recognize
 
@@ -105,6 +142,7 @@ Each face gets an `attendance` object:
 | `already_marked` | Seen within `ATTENDANCE_COOLDOWN_SECONDS`. Returns the earlier event |
 | `unknown` | Not identified (see `unknown_reason`) |
 | `too_small` | Face too small to identify |
+| `liveness_failed` | Recognised, but the face looks like a photo or a screen. Not recorded, and the name isn't returned |
 
 `GET /api/v1/attendance/summary?date=2026-11-14` returns one row per person seen that day, with `first_seen`
 (check-in), `last_seen` and `events`. To get absentees, compare with `GET /api/v1/persons`.
@@ -121,6 +159,9 @@ Every error has the same shape and a stable `code`:
 |---|---|
 | 400 | `invalid_image` |
 | 401 | `unauthorized` |
+| 403 | `forbidden` (the key lacks the scope) |
+| 429 | `rate_limited` (see `Retry-After`) |
+| 503 | `busy` (see `Retry-After`) |
 | 404 | `person_not_found` |
 | 409 | `already_enrolled`, `external_id_exists` |
 | 413 | `image_too_large` |

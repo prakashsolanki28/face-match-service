@@ -49,11 +49,16 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = 8000
     log_level: str = "info"
+    log_format: str = "text"  # "text" or "json" (one JSON object per line, for log shippers)
     # Security: requests must send X-API-Key. Without a key the API is open, which the
     # CLI only allows on localhost unless allow_no_auth is set (see cli.check_auth).
     api_key: str = ""
     allow_no_auth: bool = False
     cors_origins: List[str] = field(default_factory=lambda: ["*"])
+    # Abuse protection
+    rate_limit_per_minute: int = 600  # requests per API key (or per IP when open); 0 disables
+    auth_failures_per_minute: int = 20  # failed authentications per IP before 429
+    max_concurrent_images: int = 8  # image requests processed at once; more wait, then get 503
     # Storage (relative paths resolve against the working directory)
     data_dir: Path = Path("data")
     models_dir: Path = Path("models")
@@ -75,11 +80,24 @@ class Settings:
     # Integration
     webhook_url: str = ""  # POSTed to on every new attendance event
     webhook_secret: str = ""  # signs webhook bodies (HMAC-SHA256) when set
+    webhook_max_attempts: int = 20  # exponential backoff (5 s doubling, capped at 1 h): about 10 hours
+    webhook_retry_base_seconds: float = 5.0
+    # Data protection
+    backup_interval_hours: float = 24.0  # automatic SQLite backups into DATA_DIR/backups; 0 disables
+    backup_keep: int = 7  # newest backups to keep
+    attendance_retention_days: int = 0  # delete attendance events older than this; 0 keeps forever
+    # Liveness (anti-spoofing) for /attendance: "on" or "off"
+    liveness: str = "on"
+    liveness_threshold: float = 0.5  # minimum "real face" probability
 
     @property
     def db_path(self) -> Path:
         legacy = self.data_dir / "attendance.db"  # name used before v1.0
         return legacy if legacy.exists() else self.data_dir / "facematch.db"
+
+    @property
+    def backup_dir(self) -> Path:
+        return self.data_dir / "backups"
 
     @property
     def max_upload_bytes(self) -> int:
@@ -94,9 +112,13 @@ class Settings:
             host=_str("HOST", defaults.host),
             port=_int("PORT", defaults.port),
             log_level=_str("LOG_LEVEL", defaults.log_level).lower(),
+            log_format=_str("LOG_FORMAT", defaults.log_format).lower(),
             api_key=_str("API_KEY", ""),
             allow_no_auth=_bool("ALLOW_NO_AUTH", False),
             cors_origins=[o.strip() for o in origins.split(",") if o.strip()],
+            rate_limit_per_minute=_int("RATE_LIMIT_PER_MINUTE", defaults.rate_limit_per_minute),
+            auth_failures_per_minute=_int("AUTH_FAILURES_PER_MINUTE", defaults.auth_failures_per_minute),
+            max_concurrent_images=_int("MAX_CONCURRENT_IMAGES", defaults.max_concurrent_images),
             data_dir=Path(_str("DATA_DIR", str(defaults.data_dir))),
             models_dir=Path(_str("MODELS_DIR", str(defaults.models_dir))),
             auto_download_models=_bool("AUTO_DOWNLOAD_MODELS", True),
@@ -114,4 +136,13 @@ class Settings:
             timezone=_str("TIMEZONE", ""),
             webhook_url=_str("WEBHOOK_URL", ""),
             webhook_secret=_str("WEBHOOK_SECRET", ""),
+            webhook_max_attempts=_int("WEBHOOK_MAX_ATTEMPTS", defaults.webhook_max_attempts),
+            webhook_retry_base_seconds=_float(
+                "WEBHOOK_RETRY_BASE_SECONDS", defaults.webhook_retry_base_seconds
+            ),
+            backup_interval_hours=_float("BACKUP_INTERVAL_HOURS", defaults.backup_interval_hours),
+            backup_keep=_int("BACKUP_KEEP", defaults.backup_keep),
+            attendance_retention_days=_int("ATTENDANCE_RETENTION_DAYS", defaults.attendance_retention_days),
+            liveness=_str("LIVENESS", defaults.liveness).lower(),
+            liveness_threshold=_float("LIVENESS_THRESHOLD", defaults.liveness_threshold),
         )

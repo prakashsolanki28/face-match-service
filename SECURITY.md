@@ -14,12 +14,17 @@ Security fixes go into the latest minor release.
 
 FaceMatch stores biometric data (face embeddings). Treat a deployment like any system holding personal data:
 
-- **Always set `API_KEY`.** The service refuses to listen on a network interface without one, unless you set
-  `ALLOW_NO_AUTH=true` on purpose.
+- **Always set `API_KEY`** (the admin key). The service refuses to listen on a network interface without
+  authentication, unless you set `ALLOW_NO_AUTH=true` on purpose.
+- **Give every kiosk and integration its own scoped key** (`face-match keys create --scopes attendance`) and
+  revoke lost devices. Never put the admin key on a kiosk.
+- Rate limiting (`RATE_LIMIT_PER_MINUTE`), bad-key throttling and an overload gate are on by default. Behind a
+  reverse proxy, set `FORWARDED_ALLOW_IPS` so limits apply per real client.
 - Serve it over **HTTPS**, behind a reverse proxy (Caddy, nginx, Traefik). Browsers only allow the camera on
   HTTPS or localhost anyway.
 - Restrict `CORS_ORIGINS` to your own front-end origins.
 - Set `WEBHOOK_SECRET` and verify `X-Signature-256` on the receiving side.
-- Back up and protect `DATA_DIR` (the SQLite database). It holds embeddings and attendance history.
+- Protect `DATA_DIR`: the database and automatic backups are owner-only files; use disk encryption and copy
+  backups off-site, encrypted.
 - **Liveness is not included.** A printed photo or a screen can pass as a person. Add presentation-attack
   detection before using FaceMatch for access control. See [docs/privacy.md](docs/privacy.md).

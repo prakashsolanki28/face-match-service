@@ -6,15 +6,16 @@ import sqlite3
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import cv2
 import numpy as np
 
 from .config import Settings
-from .engine import Face, FaceEngine
+from .engine import Face, FaceEngine, LivenessEngine
 from .gallery import FaceGallery
+from .observability import Metrics
 from .schemas import (
     AttendanceEvent,
     AttendanceFace,
@@ -33,6 +34,7 @@ from .schemas import (
     RecognizeResponse,
     RejectedImage,
 )
+from .security import SCOPES
 from .storage import Database, Row
 
 # When a photo has several faces, the largest is used for enrollment only if
@@ -44,12 +46,20 @@ _UPSCALE_TARGET = 480
 
 
 class ServiceError(Exception):
-    def __init__(self, status_code: int, code: str, message: str, details: Any = None):
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        details: Any = None,
+        headers: Optional[Dict[str, str]] = None,
+    ):
         super().__init__(message)
         self.status_code = status_code
         self.code = code
         self.message = message
         self.details = details
+        self.headers = headers
 
 
 @dataclass
@@ -70,6 +80,8 @@ class MatchResult:
 class AnalyzedFace:
     fields: Dict[str, Any]  # box, score, landmarks in original-image coordinates
     embedding: Optional[np.ndarray]  # None when the face is too small to recognise
+    face: Optional[Face] = None  # detection in working-image coordinates (for liveness)
+    image: Optional[np.ndarray] = None  # working image the face was found in
 
 
 @dataclass
@@ -80,10 +92,21 @@ class _Decoded:
 
 
 class FaceService:
-    def __init__(self, settings: Settings, engine: FaceEngine, db: Database) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        engine: FaceEngine,
+        db: Database,
+        metrics: Optional[Metrics] = None,
+        liveness: Optional[LivenessEngine] = None,
+        on_event_queued: Optional[Callable[[], None]] = None,
+    ) -> None:
         self.settings = settings
         self.engine = engine
         self.db = db
+        self.metrics = metrics or Metrics()
+        self.liveness = liveness
+        self._on_event_queued = on_event_queued or (lambda: None)
         self.gallery = FaceGallery(engine.embedding_size)
         self.gallery.load(db.all_embeddings())
         self._tz = ZoneInfo(settings.timezone) if settings.timezone else None
@@ -167,8 +190,20 @@ class FaceService:
         for face in faces:
             usable = self._effective_size(face, decoded) >= self.settings.min_face_size
             embedding = self.engine.embed(decoded.image, face) if usable else None
-            results.append(AnalyzedFace(fields=self._face_fields(face, decoded), embedding=embedding))
+            results.append(
+                AnalyzedFace(
+                    fields=self._face_fields(face, decoded),
+                    embedding=embedding,
+                    face=face,
+                    image=decoded.image,
+                )
+            )
         return decoded.size, results
+
+    def liveness_score(self, face: AnalyzedFace) -> Optional[float]:
+        if self.liveness is None or face.face is None or face.image is None:
+            return None
+        return round(float(self.liveness.score(face.image, face.face)), 4)
 
     def match_embedding(self, vector: np.ndarray) -> MatchResult:
         """Apply the identification rules (threshold + margin) to one face embedding."""
@@ -207,20 +242,30 @@ class FaceService:
             processing_ms=self._elapsed_ms(start),
         )
 
-    def recognize(self, data: bytes) -> RecognizeResponse:
+    def _count_face(self, endpoint: str, outcome: str) -> None:
+        self.metrics.inc("facematch_faces_total", endpoint=endpoint, outcome=outcome)
+
+    def recognize(self, data: bytes, check_liveness: bool = False) -> RecognizeResponse:
         start = time.perf_counter()
         size, faces = self.analyze(data)
         results = []
         for face in faces:
             if face.embedding is None:
                 results.append(RecognizedFace(**face.fields, match=None, unknown_reason="too_small"))
+                self._count_face("recognize", "too_small")
                 continue
             found = self.match_embedding(face.embedding)
+            score = self.liveness_score(face) if check_liveness else None
             results.append(
                 RecognizedFace(
-                    **face.fields, match=found.match, unknown_reason=found.reason, closest=found.closest
+                    **face.fields,
+                    match=found.match,
+                    unknown_reason=found.reason,
+                    closest=found.closest,
+                    liveness_score=score,
                 )
             )
+            self._count_face("recognize", "matched" if found.match else found.reason or "unknown")
         return RecognizeResponse(image=size, faces=results, processing_ms=self._elapsed_ms(start))
 
     # ---- attendance ----------------------------------------------------------
@@ -250,6 +295,7 @@ class FaceService:
                         attendance=AttendanceResult(status="too_small"),
                     )
                 )
+                self._count_face("attendance", "too_small")
                 continue
 
             found = self.match_embedding(face.embedding)
@@ -264,6 +310,22 @@ class FaceService:
                         attendance=AttendanceResult(status="unknown"),
                     )
                 )
+                self._count_face("attendance", found.reason or "unknown")
+                continue
+
+            # Anti-spoofing: only recognised faces can mark attendance, so only they are checked.
+            score = self.liveness_score(face) if self.settings.liveness == "on" else None
+            if score is not None and score < self.settings.liveness_threshold:
+                results.append(
+                    AttendanceFace(
+                        **fields,
+                        match=None,  # don't confirm who a suspected spoof shows
+                        unknown_reason="liveness_failed",
+                        liveness_score=score,
+                        attendance=AttendanceResult(status="liveness_failed"),
+                    )
+                )
+                self._count_face("attendance", "liveness_failed")
                 continue
 
             if match.person_id in seen_in_frame:
@@ -279,6 +341,7 @@ class FaceService:
                     day=self._local(now).date().isoformat(),
                     created_at=self._iso(now),
                     cooldown_seconds=self.settings.attendance_cooldown_seconds,
+                    enqueue_webhook=bool(self.settings.webhook_url),
                 )
                 outcome = AttendanceResult(
                     status="marked" if created else "already_marked",
@@ -287,7 +350,12 @@ class FaceService:
                 )
                 if created:
                     new_events.append(self._event(row))
-            results.append(AttendanceFace(**fields, match=match, attendance=outcome))
+                    self.metrics.inc("facematch_attendance_marked_total")
+            results.append(AttendanceFace(**fields, match=match, liveness_score=score, attendance=outcome))
+            self._count_face("attendance", outcome.status)
+
+        if new_events and self.settings.webhook_url:
+            self._on_event_queued()
 
         response = MarkAttendanceResponse(
             image=size,
@@ -522,7 +590,29 @@ class FaceService:
             raise ServiceError(404, "person_not_found", "Person not found.")
         return self._person(row)
 
-    def delete_person(self, person_id: str) -> None:
-        if not self.db.delete_person(person_id):
+    def delete_person(self, person_id: str, erase_history: bool = False) -> None:
+        if not self.db.delete_person(person_id, erase_history=erase_history):
             raise ServiceError(404, "person_not_found", "Person not found.")
         self.gallery.remove(person_id)
+
+    # ---- API keys & webhooks (admin) ----------------------------------------------
+
+    def create_api_key(self, name: str, scopes: List[str]) -> Tuple[Row, str]:
+        name = (name or "").strip()
+        unknown = sorted(set(scopes) - set(SCOPES))
+        if not name:
+            raise ServiceError(422, "invalid_name", "Name must not be empty.")
+        if not scopes or unknown:
+            raise ServiceError(
+                422, "invalid_scopes", f"Unknown or missing scopes: {unknown}", {"allowed": sorted(SCOPES)}
+            )
+        return self.db.create_api_key(name, scopes, self._iso(time.time()))
+
+    def revoke_api_key(self, key_id: str) -> None:
+        if not self.db.revoke_api_key(key_id, self._iso(time.time())):
+            raise ServiceError(404, "key_not_found", "API key not found or already revoked.")
+
+    def retry_webhook(self, delivery_id: int) -> None:
+        if not self.db.retry_webhook(delivery_id):
+            raise ServiceError(404, "delivery_not_found", "Delivery not found or already delivered.")
+        self._on_event_queued()

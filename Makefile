@@ -1,13 +1,19 @@
-.PHONY: dev test lint format run docker clean
+.PHONY: dev test lint format audit run docker clean
+
+# Python 3.11+ is required (patched FastAPI/Starlette/python-multipart need it).
+PYTHON ?= $(shell command -v python3.13 || command -v python3.12 || command -v python3.11 || echo python3)
 
 dev:            ## Create .venv and install with dev tools
-	python3 -m venv .venv && .venv/bin/pip install -U pip && .venv/bin/pip install -e ".[dev]"
+	$(PYTHON) -m venv .venv && .venv/bin/pip install -U pip && .venv/bin/pip install -e ".[dev]"
 
 test:           ## Run the test suite
 	.venv/bin/pytest -q
 
 lint:           ## Check style and common bugs
 	.venv/bin/ruff check . && .venv/bin/ruff format --check .
+
+audit:          ## Check dependencies for known vulnerabilities
+	.venv/bin/pip-audit --skip-editable
 
 format:         ## Auto-fix style
 	.venv/bin/ruff check --fix . && .venv/bin/ruff format .

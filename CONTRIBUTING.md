@@ -12,11 +12,11 @@ make test           # runs the test suite (downloads models and two sample image
 make run            # http://127.0.0.1:8000
 ```
 
-Python 3.9 or newer is required. No GPU, compiler, or system libraries are needed.
+Python 3.11 or newer is required (patched FastAPI/Starlette releases need it). No GPU, compiler, or system libraries are needed.
 
 ## Before opening a pull request
 
-- `make lint` and `make test` pass. CI runs the same checks on Python 3.9, 3.11 and 3.13 and builds the Docker image.
+- `make lint` and `make test` pass. CI runs the same checks on Python 3.11, 3.12 and 3.13, audits dependencies, runs CodeQL, and builds and scans the Docker image.
 - New behaviour has a test. API changes keep `/api/v1` backwards compatible. Breaking changes need a new API version.
 - **Changes to recognition logic** (thresholds, enrollment checks, models) must come with evidence. Run
   `face-match evaluate` on a labelled photo set before and after, and paste both results into the PR.

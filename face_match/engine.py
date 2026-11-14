@@ -43,6 +43,16 @@ class FaceEngine(Protocol):
         ...
 
 
+class LivenessEngine(Protocol):
+    """Presentation-attack detection: is this a live face, or a photo/screen held up to the camera?"""
+
+    name: str
+
+    def score(self, image: np.ndarray, face: Face) -> float:
+        """Probability (0-1) that `face` in `image` is a real, live face."""
+        ...
+
+
 class OpenCVFaceEngine:
     name = "opencv-yunet-sface"
     embedding_size = 128

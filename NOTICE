@@ -12,3 +12,9 @@ Third-party models (downloaded at install/run time, not stored in this repositor
   SFace face recognition model (face_recognition_sface_2021dec.onnx)
     from the OpenCV Model Zoo, https://github.com/opencv/opencv_zoo
     Licensed under the Apache License, Version 2.0.
+
+  MiniFASNetV2 / MiniFASNetV1SE anti-spoofing models
+    (minifasnet_v2_2.7_80x80.onnx, minifasnet_v1se_4.0_80x80.onnx)
+    Copyright 2020 Minivision, https://github.com/minivision-ai/Silent-Face-Anti-Spoofing
+    Distributed in that repository under the Apache License, Version 2.0.
+    Converted to ONNX by https://github.com/yakhyo/face-anti-spoofing (Apache-2.0).

@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import cv2
@@ -286,7 +287,10 @@ def test_webhook_delivers_signed_event(make_client, lena):
         url = f"http://127.0.0.1:{server.server_port}/hook"
         with make_client(webhook_url=url, webhook_secret="shh") as client:
             _enroll(client, lena)
-            _post_image(client, "/api/v1/attendance", lena)  # background task runs before return
+            _post_image(client, "/api/v1/attendance", lena)
+            deadline = time.time() + 10  # delivered by the background webhook worker
+            while not received and time.time() < deadline:
+                time.sleep(0.05)
     finally:
         server.shutdown()
 
@@ -295,5 +299,5 @@ def test_webhook_delivers_signed_event(make_client, lena):
     expected = "sha256=" + hmac.new(b"shh", body, hashlib.sha256).hexdigest()
     assert hmac.compare_digest(signature, expected)
     payload = json.loads(body)
-    assert payload["event"] == "attendance.marked"
+    assert payload["event"] == "attendance.marked" and len(payload["id"]) == 32
     assert payload["data"]["name"] == "Lena" and payload["data"]["external_id"] == "EMP-1"

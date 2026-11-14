@@ -264,6 +264,7 @@ async function loadHealth() {
     const h = await api("/health");
     state.threshold = h.match_threshold;
     state.minFace = h.min_face_size;
+    state.liveness = !!h.liveness;
     $("statusDot").className = "dot ok";
     $("statusText").textContent = `Online · ${h.persons} enrolled`;
     $("auth").style.display = h.auth_required ? "flex" : "none";
@@ -334,12 +335,15 @@ function prepareImage(file, maxSide = 1600) {
 const jpgName = (name) => (name || "photo").replace(/\.[^.]+$/, "") + ".jpg";
 
 // Identify faces in an image; records attendance when the checkbox is on.
-async function identify(blob, filename, deviceId) {
-  const record = $("recordAttendance").checked;
+// Attendance is recorded only from the live camera: an uploaded photo can't prove someone was present
+// (liveness detects photos held up to a camera, not digital files).
+async function identify(blob, filename, deviceId, fromCamera = true) {
+  const record = fromCamera && $("recordAttendance").checked;
   const form = new FormData();
   form.append("image", blob, filename);
   if (record) form.append("device_id", deviceId);
-  const res = await api(record ? "/api/v1/attendance" : "/api/v1/recognize", { method: "POST", body: form });
+  const path = record ? "/api/v1/attendance" : `/api/v1/recognize${state.liveness ? "?liveness=true" : ""}`;
+  const res = await api(path, { method: "POST", body: form });
   res.faces.forEach((f) => {
     if (!f.attendance) f.attendance = { status: f.match ? "identified" : f.unknown_reason === "too_small" ? "too_small" : "unknown" };
   });
@@ -381,12 +385,13 @@ $("kioskUpload").addEventListener("change", async (e) => {
   try {
     const { blob, w, h } = await prepareImage(file);
     showPhoto(blob, w, h);
-    const res = await identify(blob, jpgName(file.name), "web-upload");
+    const res = await identify(blob, jpgName(file.name), "web-upload", false);
     drawOverlay(res.faces, w, h, false);
     res.faces.filter((f) => !isSmall(f)).forEach(addFeed);  // small faces are summarised in the status line
     const marked = res.faces.find((f) => f.attendance.status === "marked");
     if (marked) showBanner(`Welcome, ${marked.match.name}`);
-    $("kioskStatus").textContent = `${describe(res.faces)} · ${res.processing_ms} ms`;
+    const note = $("recordAttendance").checked ? " · photos are identified only; attendance is recorded from the live camera" : "";
+    $("kioskStatus").textContent = `${describe(res.faces)} · ${res.processing_ms} ms${note}`;
   } catch (err) {
     $("kioskStatus").textContent = err.message;
   } finally { $("kioskUploadBtn").disabled = false; }
@@ -416,6 +421,7 @@ function unknownText(face) {
   const pct = (x) => `${Math.round(x * 100)}%`;
   if (face.attendance?.status === "too_small" || reason === "too_small") return "Face too small to identify — move closer";
   if (reason === "nobody_enrolled") return "Nobody is enrolled yet";
+  if (reason === "liveness_failed") return `Liveness check failed (${pct(face.liveness_score ?? 0)} live) — a photo or screen? Look at the camera`;
   if (reason === "ambiguous") return c ? `Too close to call: looks like ${c.name} (${pct(c.similarity)}) and someone else`
     : "Too close to call between two enrolled people";
   if (c) return `Not recognised · closest: ${c.name} ${pct(c.similarity)}, needs ${pct(state.threshold ?? 0.4)}`;
@@ -466,6 +472,7 @@ function styleFor(face, live) {
   if (s === "marked" || s === "already_marked" || s === "identified")
     return { color: "#15803d", label: `${face.match.name} · ${Math.round(face.match.similarity * 100)}%` };
   if (s === "too_small") return { color: "#6b7280", label: live ? "Move closer" : "", dashed: true };
+  if (s === "liveness_failed") return { color: "#7c3aed", label: "Not live?" };
   return { color: "#c2410c", label: "Unknown" };
 }
 
@@ -517,7 +524,8 @@ function addFeed(face) {
   const s = face.attendance.status;
   const text = s === "marked" ? "Checked in" : s === "already_marked" ? `Already marked at ${time(face.attendance.timestamp)}`
     : s === "identified" ? "Identified (attendance not recorded)" : unknownText(face);
-  const sim = face.match ? ` · ${Math.round(face.match.similarity * 100)}% match` : "";
+  const sim = (face.match ? ` · ${Math.round(face.match.similarity * 100)}% match` : "")
+    + (face.liveness_score != null && s !== "liveness_failed" ? ` · live ${Math.round(face.liveness_score * 100)}%` : "");
   const name = face.match ? face.match.name : s === "too_small" ? "Small face" : "Unknown face";
   li.innerHTML = `<div class="avatar ${face.match ? "" : "bad"}">${face.match ? esc(name.trim()[0] || "?").toUpperCase() : "?"}</div>
     <div><div class="who">${esc(name)}</div><div class="meta">${esc(text)}${sim} · ${time(new Date().toISOString())}</div></div>`;
@@ -686,7 +694,8 @@ $("personFilter").addEventListener("input", renderPersons);
 $("personsBody").addEventListener("click", async (e) => {
   const btn = e.target.closest("button[data-id]");
   if (!btn || !confirm(`Delete ${btn.dataset.name} and their face data?`)) return;
-  try { await api(`/api/v1/persons/${encodeURIComponent(btn.dataset.id)}`, { method: "DELETE" }); }
+  const erase = confirm(`Also erase ${btn.dataset.name}'s attendance history?\n\nOK = erase it too (right to erasure)\nCancel = keep past attendance records`);
+  try { await api(`/api/v1/persons/${encodeURIComponent(btn.dataset.id)}${erase ? "?erase_history=true" : ""}`, { method: "DELETE" }); }
   catch (err) { alert(err.message); }
   loadRecords(); loadHealth();
 });
