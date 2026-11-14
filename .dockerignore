@@ -13,6 +13,4 @@ dataset.zip
 eval-results
 tests
 docs
-examples
 *.db
-.impeccable

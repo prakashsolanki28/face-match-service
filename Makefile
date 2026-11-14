@@ -24,5 +24,6 @@ run:            ## Run the service on http://127.0.0.1:8000
 docker:         ## Build the Docker image
 	docker build -t face-match .
 
-clean:
+clean:          ## Remove build output and caches (keeps .venv, data/ and models)
 	rm -rf build dist *.egg-info .pytest_cache .ruff_cache
+	find . -name __pycache__ -not -path "./.venv/*" -prune -exec rm -rf {} +

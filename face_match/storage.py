@@ -524,14 +524,6 @@ class Database:
                 )
         return rows
 
-    def due_webhooks(self, now: float, limit: int = 20) -> List[Row]:
-        """Read-only view of due deliveries (the dispatcher uses claim_due_webhooks)."""
-        return self._all(
-            "SELECT * FROM webhook_outbox WHERE status = 'pending' AND next_attempt_at <= ?"
-            " ORDER BY id LIMIT ?",
-            (now, limit),
-        )
-
     def webhook_delivered(self, row_id: int, attempts: int, ts: float) -> None:
         with self._tx():
             self._execute(

@@ -7,8 +7,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
 
-PACKAGE_DIR = Path(__file__).resolve().parent
-
 
 def load_dotenv(path: Path = Path(".env")) -> None:
     """Minimal .env loader (KEY=VALUE per line), read from the working directory.

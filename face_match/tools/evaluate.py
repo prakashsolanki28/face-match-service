@@ -18,9 +18,9 @@ Identity comes from the parent folder (photos/Asha Verma/1.jpg) or the file
 name (Asha Verma_12.jpg). Photos with the same file name in --enroll-dir and
 --probe-dir are treated as the same shot and never used as a probe for it.
 
-Example (the bundled celebrity dataset):
-  face-match evaluate --enroll-dir dataset/Faces/Faces \\
-      --probe-dir "dataset/Original Images/Original Images" --enroll-per-person 1,3
+Example (portal photos to enroll, camera photos as probes):
+  face-match evaluate --enroll-dir ./enroll-photos --probe-dir ./camera-photos \\
+      --enroll-per-person 1,3,5
 """
 
 from __future__ import annotations
