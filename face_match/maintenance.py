@@ -32,13 +32,12 @@ def make_backup(db: Database, backup_dir: Path, keep: int) -> Path:
 
 def apply_retention(db: Database, settings: Settings, now: Optional[float] = None) -> dict:
     now = time.time() if now is None else now
-    removed = {"attendance": 0, "webhooks": 0, "audit": 0, "sessions": 0, "gallery_changes": 0}
+    removed = {"attendance": 0, "webhooks": 0, "audit": 0, "gallery_changes": 0}
     if settings.attendance_retention_days > 0:
         removed["attendance"] = db.purge_attendance_before(now - settings.attendance_retention_days * 86400)
     if settings.audit_retention_days > 0:
         removed["audit"] = db.purge_audit_before(now - settings.audit_retention_days * 86400)
     removed["webhooks"] = db.purge_webhooks_before(now - _DELIVERED_WEBHOOK_RETENTION_DAYS * 86400)
-    removed["sessions"] = db.purge_expired_sessions(now)
     removed["gallery_changes"] = db.purge_gallery_changes_before(
         now - 86400
     )  # servers poll every few seconds

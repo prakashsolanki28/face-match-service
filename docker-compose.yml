@@ -1,7 +1,7 @@
 # Quick start:
 #   1. echo "API_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" > .env
 #   2. docker compose up -d
-#   3. open http://localhost:8000  (paste the API key into the field at the top right)
+#   3. curl http://localhost:8000/health   (API only; see docs/api.md)
 services:
   face-match:
     image: ghcr.io/prakashsolanki28/face-match-service:latest

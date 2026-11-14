@@ -42,7 +42,13 @@ face-match import --csv people.csv --photos ./photos --replace                # 
 
 - Recognised column names: ID (`external_id`, `student_id`, `admission_no`, `roll_no`, `employee_id`, `id`),
   name (`name`, `full_name`, `student_name`), photo (`photo`, `photos`, `image`, `filename`, `file`;
-  separate several photos with `;`). Other columns are ignored. See [examples/students_template.csv](../examples/students_template.csv).
+  separate several photos with `;`). Other columns are ignored. Example:
+
+  ```csv
+  admission_no,student_name,class,photo
+  STU0001,Asha Verma,7-A,STU0001.jpg
+  STU0002,Ravi Kumar,7-A,STU0002.jpg;STU0002_live.jpg
+  ```
 - Without a CSV, file names are used: `EMP-1024_Asha Verma.jpg`, or a sub-folder per person.
 - Every run writes a CSV report with one row per person and the reason for any failure. Re-running skips people
   already enrolled. Use `--add-photos` / `--replace` to update them, and `--allow-duplicates` for twins.

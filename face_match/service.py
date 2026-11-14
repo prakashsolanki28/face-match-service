@@ -35,7 +35,7 @@ from .schemas import (
     RecognizeResponse,
     RejectedImage,
 )
-from .security import MIN_PASSWORD_LENGTH, ROLES, SCOPES, USERNAME_PATTERN, hash_password
+from .security import SCOPES
 from .storage import Database, Row
 
 # When a photo has several faces, the largest is used for enrollment only if
@@ -640,70 +640,3 @@ class FaceService:
         if not self.db.retry_webhook(delivery_id):
             raise ServiceError(404, "delivery_not_found", "Delivery not found or already delivered.")
         self._on_event_queued()
-
-    # ---- admin UI users ---------------------------------------------------------------
-
-    @staticmethod
-    def _check_password(password: Optional[str]) -> None:
-        if password is not None and len(password) < MIN_PASSWORD_LENGTH:
-            raise ServiceError(
-                422, "weak_password", f"Passwords need at least {MIN_PASSWORD_LENGTH} characters."
-            )
-
-    @staticmethod
-    def _check_role(role: Optional[str]) -> None:
-        if role is not None and role not in ROLES:
-            raise ServiceError(422, "invalid_role", f"Role must be one of: {', '.join(ROLES)}.")
-
-    def create_user(self, username: str, password: str, role: str) -> Row:
-        username = (username or "").strip()
-        if not USERNAME_PATTERN.match(username):
-            raise ServiceError(
-                422, "invalid_username", "Usernames are 3-64 characters: letters, digits and _ . @ -"
-            )
-        self._check_password(password)
-        self._check_role(role)
-        if self.db.find_user(username):
-            raise ServiceError(409, "user_exists", f"User '{username}' already exists.")
-        return self.db.create_user(username, hash_password(password), role, self._iso(time.time()))
-
-    def _guard_last_admin(self, user: Row) -> None:
-        if user["role"] == "admin" and not user["disabled_at"] and self.db.count_admins() <= 1:
-            raise ServiceError(
-                409, "last_admin", "This is the only active admin. Create another admin first."
-            )
-
-    def update_user(
-        self,
-        user_id: str,
-        role: Optional[str] = None,
-        password: Optional[str] = None,
-        disabled: Optional[bool] = None,
-    ) -> Row:
-        user = self.db.get_user(user_id)
-        if user is None:
-            raise ServiceError(404, "user_not_found", "User not found.")
-        self._check_role(role)
-        self._check_password(password)
-        if (role is not None and role != "admin") or disabled:
-            self._guard_last_admin(user)
-        fields: Dict[str, Any] = {}
-        if role is not None:
-            fields["role"] = role
-        if password is not None:
-            fields["password_hash"] = hash_password(password)
-        if disabled is not None:
-            fields["disabled_at"] = self._iso(time.time()) if disabled else None
-        if fields:
-            self.db.update_user(user_id, **fields)
-        if password is not None or disabled:
-            self.db.delete_sessions_for_user(user_id)  # sign out everywhere
-        return self.db.get_user(user_id)  # type: ignore[return-value]
-
-    def delete_user(self, user_id: str) -> Row:
-        user = self.db.get_user(user_id)
-        if user is None:
-            raise ServiceError(404, "user_not_found", "User not found.")
-        self._guard_last_admin(user)
-        self.db.delete_user(user_id)
-        return user

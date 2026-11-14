@@ -22,7 +22,7 @@ like any other personal data.
 
 | Need | How |
 |---|---|
-| **Right to erasure** | `DELETE /api/v1/persons/{id}?erase_history=true` removes the face data, the attendance history and any queued webhooks for that person. Without the flag, history is kept (a record of who attended stays useful after someone leaves). The demo UI asks which you want |
+| **Right to erasure** | `DELETE /api/v1/persons/{id}?erase_history=true` removes the face data, the attendance history and any queued webhooks for that person. Without the flag, history is kept (a record of who attended stays useful after someone leaves) |
 | **Retention limit** | `ATTENDANCE_RETENTION_DAYS=365` (for example) deletes older attendance automatically, checked hourly |
 | **File protection** | The database and backups are created owner-only (mode 0600). The Docker image runs as a non-root user |
 | **Encryption at rest** | Use disk or volume encryption (LUKS, BitLocker, FileVault, encrypted EBS/managed disks). FaceMatch doesn't encrypt inside the database file |
@@ -68,7 +68,7 @@ rejected at the default `LIVENESS_THRESHOLD=0.5`).
 
 - **It can't spot a digital photo sent directly to the API.** It detects re-capture artifacts (print texture,
   screen moiré), so an uploaded image file scores as "live". That's why attendance should only come from kiosks
-  with their own `attendance`-scope key, and why the demo UI never records attendance from uploaded photos.
+  with their own `attendance`-scope key, and why kiosks should only ever send live camera frames.
   Protect kiosk keys; revoke them if a device is lost.
 - **It doesn't stop virtual-camera or deepfake injection,** masks, or a determined attacker. It's a deterrent
   against casual cheating (a photo of a friend on a phone), not a security boundary for doors or payments.

@@ -14,8 +14,7 @@ take precedence). Copy [`.env.example`](../.env.example) to get started. Every s
 | `API_KEY` | *(empty)* | The **admin** key (all permissions). Clients send it as `X-API-Key` or `Authorization: Bearer …`. Create limited device keys with it (see [api.md](api.md#authentication)). An API key, or at least one device key, is **required whenever `HOST` is not localhost** |
 | `ALLOW_NO_AUTH` | `false` | Set `true` to run an open API on a network on purpose (e.g. behind a private gateway) |
 | `CORS_ORIGINS` | `*` | Comma-separated origins allowed to call the API from a browser. Restrict in production |
-| `SESSION_HOURS` | `12` | How long a UI sign-in lasts |
-| `SESSION_COOKIE_SECURE` | `auto` | `auto` marks the session cookie Secure when the request is HTTPS (directly or via a trusted proxy); `true`/`false` to force |
+| `API_DOCS` | `false` | Serve interactive API docs at `/docs` and `/redoc`. The OpenAPI spec is always at `/openapi.json` |
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Proxies whose `X-Forwarded-For` header is trusted for the client IP (used by rate limiting). Set it to your reverse proxy's address |
 
 ## Abuse protection

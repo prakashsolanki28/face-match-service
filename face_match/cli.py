@@ -3,7 +3,6 @@
 serve            run the HTTP service (default)
 download-models  download and verify the ONNX models
 keys             create, list and revoke scoped API keys
-users            manage admin UI accounts (admin, operator, viewer)
 backup           write a consistent backup of the database
 import           bulk-enroll people from a CSV roster or photo folder
 evaluate         measure accuracy on a labelled photo set
@@ -42,7 +41,7 @@ def _has_device_keys(settings: Settings) -> bool:
 
     db = open_database(settings)
     try:
-        return db.has_active_api_keys() or db.has_active_users()
+        return db.has_active_api_keys()
     finally:
         db.close()
 
@@ -78,22 +77,6 @@ def main(argv: Optional[List[str]] = None) -> None:
     keys_sub.add_parser("list", help="List keys (tokens are never shown again).")
     revoke = keys_sub.add_parser("revoke", help="Revoke a key by id.")
     revoke.add_argument("key_id")
-    users = sub.add_parser("users", help="Manage admin UI accounts.")
-    users_sub = users.add_subparsers(dest="users_command", required=True)
-    for name, help_text in [
-        ("create", "Create a user (password asked interactively, or --password-stdin)."),
-        ("set-password", "Reset a user's password (signs them out everywhere)."),
-    ]:
-        command = users_sub.add_parser(name, help=help_text)
-        command.add_argument("--username", required=True)
-        command.add_argument("--password-stdin", action="store_true", help="Read the password from stdin.")
-        if name == "create":
-            command.add_argument("--role", default="admin", choices=["admin", "operator", "viewer"])
-    users_sub.add_parser("list", help="List users.")
-    for name in ("disable", "enable", "delete"):
-        users_sub.add_parser(name, help=f"{name.capitalize()} a user.").add_argument(
-            "--username", required=True
-        )
     backup = sub.add_parser("backup", help="Write a consistent database backup (safe while serving).")
     backup.add_argument("--out", help="Target file (default: DATA_DIR/backups/facematch-<time>.db).")
     sub.add_parser("import", help="Bulk-enroll people (see `face-match import --help`).", add_help=False)
@@ -135,10 +118,6 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     if args.command == "keys":
         _keys_command(args, settings)
-        return
-
-    if args.command == "users":
-        _users_command(args, settings)
         return
 
     if args.command == "backup":
@@ -204,58 +183,6 @@ def _keys_command(args: argparse.Namespace, settings: Settings) -> None:
             if not db.revoke_api_key(args.key_id, now):
                 raise SystemExit(f"No active key with id {args.key_id}")
             print(f"Revoked {args.key_id} (running servers stop accepting it within 30 s)")
-    finally:
-        db.close()
-
-
-def _read_password(args: argparse.Namespace) -> str:
-    if args.password_stdin:
-        return sys.stdin.readline().rstrip("\n")
-    import getpass
-
-    first = getpass.getpass("Password: ")
-    if first != getpass.getpass("Repeat password: "):
-        raise SystemExit("Passwords don't match.")
-    return first
-
-
-def _users_command(args: argparse.Namespace, settings: Settings) -> None:
-    from .service import FaceService, ServiceError
-    from .storage import open_database
-
-    db = open_database(settings)
-
-    class _NoEngine:  # user management doesn't need the face models
-        embedding_size = 128
-
-    service = FaceService(settings, _NoEngine(), db)  # type: ignore[arg-type]
-    try:
-        if args.users_command == "list":
-            for row in db.list_users():
-                state = "disabled" if row["disabled_at"] else "active"
-                print(
-                    f"{row['id']}  {row['username']:<24} {row['role']:<9} {state:<8} last login: "
-                    f"{row['last_login_at'] or 'never'}"
-                )
-            return
-        if args.users_command == "create":
-            row = service.create_user(args.username, _read_password(args), args.role)
-            print(f"Created {row['role']} '{row['username']}' ({row['id']}). Sign in at the web UI.")
-            return
-        user = db.find_user(args.username)
-        if user is None:
-            raise SystemExit(f"No user named {args.username}")
-        if args.users_command == "set-password":
-            service.update_user(user["id"], password=_read_password(args))
-            print(f"Password changed for {user['username']}; their sessions were signed out.")
-        elif args.users_command in ("disable", "enable"):
-            service.update_user(user["id"], disabled=args.users_command == "disable")
-            print(f"{user['username']} {args.users_command}d.")
-        elif args.users_command == "delete":
-            service.delete_user(user["id"])
-            print(f"Deleted {user['username']}.")
-    except ServiceError as exc:
-        raise SystemExit(exc.message) from None
     finally:
         db.close()
 

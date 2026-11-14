@@ -37,18 +37,18 @@ rather than a guess.
 Portal photos are often years old and studio-lit. One photo taken with the actual kiosk camera helps more than
 anything else: in our evaluation, going from 1 to 3 photos per person cut "unknown" from 13.6% to 3.0%.
 
-- **Demo UI:** in Enroll, capture the person, enter their ID and click Enroll. The page offers **"Add these photos to …"**.
+- **API:** `POST /api/v1/persons/{id}/faces` with a photo from the kiosk camera (look the id up with
+  `GET /api/v1/persons?external_id=…`).
 - **In bulk:** `face-match import ... --add-photos`.
 - **New school year:** `face-match import ... --replace`.
 
 ## 4. Daily use
 
-- **Kiosk:** a tablet or laptop at the entrance running the full-screen `/kiosk.html` page with an attendance-only
-  device key (see [admin-and-kiosk.md](admin-and-kiosk.md)). Each person needs 1–2 seconds in front of it. One server
-  handles about 25–35 kiosks; if 400 people arrive within 20 minutes, use 2–4 entry points.
-- **Teachers and office staff:** sign in as *operators* to enroll students and view records; give management
-  *viewer* accounts.
-- **Records:** **Present / Absent** for any date, plus search.
+- **Kiosk:** your camera app at the entrance sends frames to `/api/v1/attendance` with an attendance-only device key
+  (see [keys-and-audit.md](keys-and-audit.md)). Each person needs 1–2 seconds in front of it. One server handles
+  about 25–35 kiosks; if 400 people arrive within 20 minutes, use 2–4 entry points.
+- **Records:** `GET /api/v1/attendance/summary?date=…` lists who was present; compare with `GET /api/v1/persons`
+  for absentees.
 - **Your portal:** receives each check-in by webhook or pulls the daily summary (see [integration.md](integration.md)).
 
 ## Why it doesn't guess

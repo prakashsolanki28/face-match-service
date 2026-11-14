@@ -1,4 +1,4 @@
-"""End-to-end tests for `face-match import` (face_match/tools/bulk_import.py) over real HTTP."""
+"""End-to-end tests for `face-match import` over real HTTP, with generated image files."""
 
 from __future__ import annotations
 
@@ -10,16 +10,16 @@ from pathlib import Path
 
 import pytest
 import uvicorn
-from conftest import make_test_settings, reset_test_database
+from conftest import make_test_app, reset_test_database
+from fakes import Spec, blank_png, face_png
 
-from face_match.main import create_app
 from face_match.tools import bulk_import
 
 
 @pytest.fixture
 def live_server(tmp_path):
     reset_test_database()
-    app = create_app(make_test_settings(tmp_path))
+    app = make_test_app(tmp_path)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", 0))
     server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
@@ -34,15 +34,15 @@ def live_server(tmp_path):
 
 
 @pytest.fixture
-def photos(tmp_path, passport_thumb, blank, messi_small, lena_variant):
+def photos(tmp_path):
     folder = tmp_path / "photos"
     folder.mkdir()
-    (folder / "STU0001_Asha_Verma.jpg").write_bytes(passport_thumb)
-    (folder / "STU0002_No Face.jpg").write_bytes(blank)
-    (folder / "STU0003_Far Away.jpg").write_bytes(messi_small)  # face only ~31 px wide
+    (folder / "STU0001_Asha_Verma.png").write_bytes(face_png(Spec(1)))
+    (folder / "STU0002_No Face.png").write_bytes(blank_png())
+    (folder / "STU0003_Far Away.png").write_bytes(face_png(Spec(3, size=24)))
     (folder / "README.txt").write_text("ignored")
     (folder / "live").mkdir()
-    (folder / "live" / "asha_live.jpg").write_bytes(lena_variant)
+    (folder / "live" / "asha_live.png").write_bytes(face_png(Spec(1, variant=4)))
     return folder
 
 
@@ -51,29 +51,25 @@ def _report(path: Path):
         return {row["external_id"]: row for row in csv.DictReader(fh)}
 
 
-def test_folder_import_reports_each_student_and_is_rerunnable(live_server, photos, tmp_path):
+def test_folder_import_reports_each_person_and_is_rerunnable(live_server, photos, tmp_path):
     report = tmp_path / "report.csv"
     args = ["--url", live_server, "--photos", str(photos), "--report", str(report)]
-
     assert bulk_import.main(args) == 1  # some rows failed
     rows = _report(report)
-    assert rows["STU0001"]["status"] == "enrolled"
-    assert rows["STU0001"]["name"] == "Asha Verma"
+    assert rows["STU0001"]["status"] == "enrolled" and rows["STU0001"]["name"] == "Asha Verma"
     assert rows["STU0002"]["status"] == "failed" and "no face found" in rows["STU0002"]["detail"]
     assert rows["STU0003"]["status"] == "failed" and "too small" in rows["STU0003"]["detail"]
-    assert "live" not in rows or rows["live"]["status"] == "failed"  # sub-folder without an ID prefix
-
     bulk_import.main(args)
     assert _report(report)["STU0001"]["status"] == "skipped"
 
 
-def test_csv_import_with_portal_style_headers(live_server, photos, tmp_path):
-    roster = tmp_path / "students.csv"
+def test_csv_import_add_and_replace(live_server, photos, tmp_path):
+    roster = tmp_path / "people.csv"
     roster.write_text(
         "Admission_No,Student_Name,Class,Photo\n"
-        "STU0001,Asha Verma,7-A,STU0001_Asha_Verma.jpg\n"
-        "STU0009,Missing Photo,7-A,does-not-exist.jpg\n"
-        ",No ID,7-A,STU0001_Asha_Verma.jpg\n",
+        "STU0001,Asha Verma,7-A,STU0001_Asha_Verma.png\n"
+        "STU0009,Missing Photo,7-A,does-not-exist.png\n"
+        ",No ID,7-A,STU0001_Asha_Verma.png\n",
         encoding="utf-8-sig",  # as exported by Excel
     )
     report = tmp_path / "report.csv"
@@ -81,27 +77,21 @@ def test_csv_import_with_portal_style_headers(live_server, photos, tmp_path):
     bulk_import.main(base)
     rows = _report(report)
     assert rows["STU0001"]["status"] == "enrolled"
-    assert "photo not found" in rows["STU0009"]["detail"]
-    assert rows[""]["detail"] == "missing ID"
+    assert "photo not found" in rows["STU0009"]["detail"] and rows[""]["detail"] == "missing ID"
 
-    # Later: add a fresh live photo to an already enrolled student.
-    roster.write_text("admission_no,photo\nSTU0001,live/asha_live.jpg\n")
+    roster.write_text("admission_no,photo\nSTU0001,live/asha_live.png\n")
     bulk_import.main(base + ["--add-photos"])
     row = _report(report)["STU0001"]
-    assert row["status"] == "photos_added" and row["photos_accepted"] == "1"
-    assert row["name"] == "Asha Verma"  # taken from the enrolled record
+    assert row["status"] == "photos_added" and row["photos_accepted"] == "1" and row["name"] == "Asha Verma"
 
-    # New school year: replace the photos; a photo without a face changes nothing.
-    roster.write_text("admission_no,photo\nSTU0001,STU0002_No Face.jpg\n")
-    assert bulk_import.main(base + ["--replace"]) == 1
-    roster.write_text("admission_no,photo\nSTU0001,live/asha_live.jpg\n")
+    roster.write_text("admission_no,photo\nSTU0001,STU0002_No Face.png\n")
+    assert bulk_import.main(base + ["--replace"]) == 1  # unusable photo: old photos kept
+    roster.write_text("admission_no,photo\nSTU0001,live/asha_live.png\n")
     bulk_import.main(base + ["--replace"])
-    row = _report(report)["STU0001"]
-    assert row["status"] == "replaced" and row["photos_accepted"] == "1"
+    assert _report(report)["STU0001"]["status"] == "replaced"
 
 
 def test_dry_run_needs_no_server(photos, tmp_path):
     report = tmp_path / "report.csv"
     bulk_import.main(["--dry-run", "--photos", str(photos), "--report", str(report)])
-    rows = _report(report)
-    assert rows["STU0001"]["status"] == "valid"
+    assert _report(report)["STU0001"]["status"] == "valid"

@@ -8,7 +8,7 @@ Thanks for helping! Bug reports, docs fixes, and pull requests are all welcome.
 git clone https://github.com/prakashsolanki28/face-match-service.git
 cd face-match-service
 make dev            # creates .venv and installs FaceMatch with test/lint tools
-make test           # runs the test suite (downloads models and sample images once)
+make test           # runs the test suite (downloads the models once; no face images needed)
 # against PostgreSQL too:  FACE_MATCH_TEST_DATABASE_URL=postgresql://user@localhost/facematch_test make test
 make run            # http://127.0.0.1:8000
 ```
@@ -26,8 +26,8 @@ Python 3.11 or newer is required (patched FastAPI/Starlette releases need it). N
 
 ## Privacy rules for contributors
 
-- **Never commit photos of real people**, datasets, `data/` folders or `.db` files. Tests download public
-  OpenCV sample images at run time instead.
+- **Never commit photos of real people**, datasets, `data/` folders or `.db` files. Tests use generated images
+  and a fake face engine (`tests/fakes.py`), so no face images are needed or allowed in the repository.
 - Never paste real face images into issues. Describe the image instead (size, number of faces, lighting).
 
 ## Project layout
@@ -35,7 +35,7 @@ Python 3.11 or newer is required (patched FastAPI/Starlette releases need it). N
 ```
 face_match/
   cli.py          `face-match` command (serve, download-models, import, evaluate)
-  main.py         FastAPI app factory: wiring, error handlers, CORS, static UI
+  main.py         FastAPI app factory: wiring, error handlers, CORS
   api.py          /api/v1 routes and API-key auth
   service.py      business rules: enrollment checks, matching, attendance
   engine.py       FaceEngine interface + OpenCV YuNet/SFace implementation
@@ -45,13 +45,12 @@ face_match/
   webhook.py      signed outbound webhooks
   schemas.py      request/response models (the API contract)
   config.py       settings from environment / .env
-  security.py     keys, roles, passwords, sessions, rate limiting, overload gate
+  security.py     admin and device keys, rate limiting, overload gate
   liveness.py     MiniFASNet anti-spoofing
   observability.py  metrics, request ids, JSON logs
   maintenance.py  backups, retention, periodic workers
-  static/         web UI (index.html) and kiosk page (kiosk.html), no build step
   tools/          bulk_import.py (stdlib only), evaluate.py, pilot_report.py, loadtest.py
-tests/            API, bulk-import and dataset accuracy tests
+tests/            API, production, multi-server, bulk-import and model smoke tests (fakes.py: model-free engine)
 docs/             user documentation
 ```
 

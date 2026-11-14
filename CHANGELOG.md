@@ -3,6 +3,26 @@
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/),
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [2.0.0] - 2026-11-14
+
+FaceMatch is now an API-only service.
+
+### Removed (breaking)
+- The built-in web UI (`/`, `/index.html`) and the kiosk page (`/kiosk.html`). Build kiosks and admin screens in your
+  own apps against the API; docs/keys-and-audit.md includes a sample kiosk client.
+- Sign-in accounts: users, roles, login/logout, session cookies and CSRF (`/api/v1/auth/login`,
+  `/api/v1/auth/logout`, `/api/v1/users`, `face-match users`, `SESSION_*` settings). Access is by the admin
+  `API_KEY` and scoped device keys. `/api/v1/auth/me` remains and describes the calling key.
+- The `login` field from `/health`.
+- Datasets, sample photos and dummy data from the project and its tests.
+
+### Changed
+- Interactive API docs (`/docs`, `/redoc`) are off by default; enable them with `API_DOCS=true`. The OpenAPI spec
+  is always at `/openapi.json`, and `GET /` returns a small service description.
+- Tests use generated images and a model-free fake engine (`tests/fakes.py`) instead of photos of people. A
+  separate smoke test checks that the real models load and run. Recognition accuracy is measured with
+  `face-match evaluate` on your own photos.
+
 ## [1.2.0] - 2026-11-14
 
 ### Added

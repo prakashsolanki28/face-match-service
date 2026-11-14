@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import List
 
 PACKAGE_DIR = Path(__file__).resolve().parent
-STATIC_DIR = PACKAGE_DIR / "static"
 
 
 def load_dotenv(path: Path = Path(".env")) -> None:
@@ -54,8 +53,9 @@ class Settings:
     # CLI only allows on localhost unless allow_no_auth is set (see cli.check_auth).
     api_key: str = ""
     allow_no_auth: bool = False
-    session_hours: float = 12.0  # admin UI login lifetime
-    session_cookie_secure: str = "auto"  # "auto" (Secure when the request is HTTPS), "true" or "false"
+    api_docs: bool = (
+        False  # serve interactive API docs at /docs and /redoc (the spec is always at /openapi.json)
+    )
     cors_origins: List[str] = field(default_factory=lambda: ["*"])
     # Abuse protection
     rate_limit_per_minute: int = 600  # requests per API key (or per IP when open); 0 disables
@@ -120,8 +120,7 @@ class Settings:
             log_format=_str("LOG_FORMAT", defaults.log_format).lower(),
             api_key=_str("API_KEY", ""),
             allow_no_auth=_bool("ALLOW_NO_AUTH", False),
-            session_hours=_float("SESSION_HOURS", defaults.session_hours),
-            session_cookie_secure=_str("SESSION_COOKIE_SECURE", defaults.session_cookie_secure).lower(),
+            api_docs=_bool("API_DOCS", False),
             database_url=_str("DATABASE_URL", ""),
             gallery_sync_seconds=_float("GALLERY_SYNC_SECONDS", defaults.gallery_sync_seconds),
             cors_origins=[o.strip() for o in origins.split(",") if o.strip()],

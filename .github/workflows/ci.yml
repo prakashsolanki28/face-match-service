@@ -39,10 +39,8 @@ jobs:
       - name: Cache models and test images
         uses: actions/cache@v4
         with:
-          path: |
-            models
-            tests/.cache
-          key: assets-${{ hashFiles('face_match/model_store.py', 'tests/conftest.py') }}
+          path: models
+          key: models-${{ hashFiles('face_match/model_store.py') }}
       - run: pip install -e ".[dev,postgres]"
       - run: face-match download-models
       - run: pytest -q
@@ -69,10 +67,8 @@ jobs:
       - name: Cache models and test images
         uses: actions/cache@v4
         with:
-          path: |
-            models
-            tests/.cache
-          key: assets-${{ hashFiles('face_match/model_store.py', 'tests/conftest.py') }}
+          path: models
+          key: models-${{ hashFiles('face_match/model_store.py') }}
       - run: pip install -e ".[dev,postgres]"
       - run: face-match download-models
       - name: Run the full suite against PostgreSQL

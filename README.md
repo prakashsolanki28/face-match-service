@@ -12,9 +12,9 @@ Built-in attendance logging, bulk import and signed webhooks cover the common "w
   no compiler, and no database server required (SQLite by default, PostgreSQL for several servers).
 - **Safe by design:** it refuses to guess between look-alikes, tells you *why* a face is unknown, rejects photos
   and screens held up to the camera (liveness), and stores embeddings rather than photos.
-- **Production features:** sign-in accounts with roles, an audit log, a locked-down kiosk page, per-device API keys,
-  rate limiting, webhooks that retry until delivered, Prometheus metrics, JSON logs, backups, retention,
-  right to erasure, and several servers sharing PostgreSQL.
+- **API only:** no built-in UI. Your portal, kiosks and apps integrate over REST with scoped API keys.
+- **Production features:** per-device API keys, an audit log, rate limiting, webhooks that retry until delivered,
+  Prometheus metrics, JSON logs, backups, retention, right to erasure, and several servers sharing PostgreSQL.
 - **Commercially usable:** Apache-2.0 code, with permissively licensed models (YuNet: MIT, SFace: Apache-2.0).
 - **Measured:** 97.9% correct with 5 photos per person and **no wrong names** on a 31-person, 2,500-photo
   evaluation. See [docs/accuracy.md](docs/accuracy.md).
@@ -41,9 +41,9 @@ face-match serve            # downloads the models on first run → http://127.0
 
 | URL | What |
 |---|---|
-| `http://localhost:8000` | Demo UI. Paste your API key at the top right |
-| `http://localhost:8000/docs` | Interactive API docs (OpenAPI / Swagger) |
 | `http://localhost:8000/health` | Health check |
+| `http://localhost:8000/openapi.json` | Machine-readable API specification (OpenAPI 3) |
+| `http://localhost:8000/docs` | Interactive API docs, only when started with `API_DOCS=true` |
 
 ## Use it from your app
 
@@ -78,8 +78,8 @@ back to your records.
 | **Matching** | 1:N identification against everyone enrolled (`/recognize`), with a reason for every unknown face |
 | **Enrollment** | Create, add or replace photos. Quality checks reject photos with no face, several faces, a face too small, inconsistent photos or duplicates |
 | **Attendance** | `/attendance` logs check-ins, with liveness (anti-spoofing), a cooldown, daily present/absent summary and webhooks that retry until delivered |
-| **Security** | Sign-in accounts (admin/operator/viewer) with CSRF-protected sessions, scoped device keys (a kiosk key can only mark attendance), audit log, rate limiting, secure defaults |
-| **Kiosk** | Full-screen `/kiosk.html` check-in page for tablets: no admin functions, keeps the screen awake, recovers from network drops, notices revoked keys |
+| **Security** | Admin key plus scoped device keys (a kiosk key can only mark attendance), audit log, rate limiting, overload protection, secure defaults |
+| **Kiosks** | Any camera app can be a kiosk: send frames to `/api/v1/attendance` with an attendance-only key (sample client in the docs) |
 | **Scale** | One server handles about 25–35 kiosks; add servers behind a load balancer with PostgreSQL (`DATABASE_URL`) |
 | **Operations** | Prometheus `/metrics`, JSON logs with request ids, automatic backups, retention, `face-match pilot-report` for go-live validation |
 | **Bulk import** | `face-match import` enrolls hundreds of people from a CSV roster and photo folder, with a report |
@@ -94,7 +94,7 @@ back to your records.
 - [Integrating with a portal](docs/integration.md): IDs, webhooks, bulk import, keeping photos up to date
 - [Attendance guide](docs/attendance.md): schools and offices with hundreds of people
 - [Pilot guide](docs/pilot.md): validate on your own people before go-live
-- [Accounts, kiosks and audit log](docs/admin-and-kiosk.md): roles, first admin, kiosk setup
+- [Keys, kiosks and audit log](docs/keys-and-audit.md): device keys, building a kiosk client, audit log
 - [Accuracy](docs/accuracy.md): how it's measured, results, tuning
 - [Privacy & security](docs/privacy.md): biometric data, consent, liveness
 

@@ -59,11 +59,13 @@ person, 0.45 drops correct to 77%, which is why 0.40 is the default.
 - Enroll **3–5 photos** per person: front, slightly left, slightly right, ideally from the real camera.
 - Front lighting. A window behind the person is the most common cause of misses.
 - Faces should be **100 px or wider** in the frame. Mount the camera at face height.
-- If someone is often unknown, open the demo UI with **Record attendance** unticked: it shows the closest match and
-  its score (e.g. "closest: Asha Verma 33%, needs 40%"). Then add a photo like the one that failed.
+- If someone is often unknown, send one of their failing frames to `POST /api/v1/recognize`: the response's
+  `closest` shows who they were nearest to and the score (e.g. 0.33 against a 0.40 threshold). Then add a photo like
+  the one that failed with `POST /api/v1/persons/{id}/faces`.
 
-## Reproducing the regression test
+## Automated tests vs. accuracy
 
-`tests/test_dataset.py` runs a smaller version (12 people each enrolled from one crop, plus 4 strangers) when the
-dataset is available. Point `FACE_MATCH_DATASET` at a folder with `Faces/Faces/<Name>_<n>.jpg` crops and
-`Original Images/Original Images/<Name>/*.jpg` photos. The dataset isn't distributed with this repository.
+The automated test suite checks the service's logic with generated images and a fake face engine, and checks
+that the real models load and run. It doesn't contain photos of people, so it doesn't measure recognition
+accuracy. The results above come from a one-off evaluation; the evaluation photos aren't part of this repository.
+Measure on your own photos with `face-match evaluate`.

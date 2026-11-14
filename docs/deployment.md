@@ -47,7 +47,7 @@ WantedBy=multi-user.target
 ## HTTPS
 
 Put FaceMatch behind a reverse proxy that terminates TLS. Browsers only allow camera access on HTTPS
-(or localhost), so you need it for the demo UI on phones and tablets too. Caddy example:
+(or localhost), so browser-based kiosk apps need it too. Caddy example:
 
 ```
 face.example.com {
@@ -143,7 +143,7 @@ What is shared, and how:
 
 | Concern | How it works with several servers |
 |---|---|
-| People, embeddings, attendance, keys, users, sessions, audit | In PostgreSQL. Any server can handle any request; no sticky sessions needed |
+| People, embeddings, attendance, keys, audit log, webhook queue | In PostgreSQL. Any server can handle any request; no sticky sessions needed |
 | New enrollments | Each server polls a change feed every `GALLERY_SYNC_SECONDS` (default 2 s) and updates its in-memory index |
 | Check-ins | A per-person database lock means two servers can't record the same check-in twice |
 | Webhooks | Deliveries are claimed with `FOR UPDATE SKIP LOCKED`, so exactly one server sends each attempt |

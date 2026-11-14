@@ -7,10 +7,10 @@ Lab numbers don't replace a pilot. Your people, cameras, lighting and photos dec
 
 1. Deploy FaceMatch with `API_KEY`, `TIMEZONE` and liveness on (the default). See [deployment.md](deployment.md).
 2. Enroll the group with `face-match import` from your portal photos, then fix every row the import report flags.
-3. Add **one live photo per person** with the kiosk camera (Enroll tab → "Add these photos to …").
-4. Create the first admin (`face-match users create --username admin`), then in **Admin → Device keys** create a
-   key per kiosk with only `attendance`, and open `/kiosk.html` on each tablet with its setup link
-   (see [admin-and-kiosk.md](admin-and-kiosk.md)).
+3. Add **one live photo per person** taken with the kiosk camera (`POST /api/v1/persons/{id}/faces`, or
+   `face-match import --add-photos`).
+4. Create a device key per kiosk with only `attendance` (`face-match keys create --name pilot-kiosk --scopes attendance`)
+   and point your kiosk app at `/api/v1/attendance` (see [keys-and-audit.md](keys-and-audit.md)).
 5. Keep taking attendance the usual way (paper or portal). That register is your ground truth.
 
 ## 2. Measure every day
@@ -32,7 +32,7 @@ Pilot report for 2026-11-14: 42 people in the register, 39 present
 
 The command exits with status 1 if there is any `FALSE_PRESENT`, and writes a per-person CSV.
 
-Also watch `/metrics` (or the demo UI's Activity list):
+Also watch `/metrics`:
 
 - `facematch_faces_total{endpoint="attendance",outcome="liveness_failed"}`: if real people often fail
   liveness, check lighting and camera placement, or lower `LIVENESS_THRESHOLD` carefully.
@@ -42,7 +42,7 @@ Also watch `/metrics` (or the demo UI's Activity list):
 
 On a few days, ask volunteers to try to cheat the kiosk: hold up a printed photo, a photo on a phone, and a video
 on a tablet of an enrolled person. Write down each attempt and whether it was marked (`pilot-report` shows it as
-`FALSE_PRESENT` if the person was absent, or check the Activity list).
+`FALSE_PRESENT` if the person was absent, or check `GET /api/v1/attendance`).
 
 ## 4. Go-live criteria (suggested)
 

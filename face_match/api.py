@@ -5,15 +5,11 @@ Every route declares the permission (scope) it needs; see security.SCOPES.
 
 from __future__ import annotations
 
-import hmac
-import time
 from contextlib import contextmanager
 from datetime import date
 from typing import Iterator, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, Response, UploadFile
-from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 
 from .observability import request_id_var
@@ -27,22 +23,16 @@ from .schemas import (
     DetectResponse,
     EnrollResponse,
     ErrorResponse,
-    LoginRequest,
     MarkAttendanceResponse,
     Person,
     RecognizeResponse,
-    User,
-    UserCreate,
-    UserUpdate,
     WebhookDelivery,
     WhoAmI,
 )
-from .security import OPEN_ACCESS, ROLES, Busy, Principal, RateLimited, check_password_with_timing_guard
+from .security import OPEN_ACCESS, Busy, Principal, RateLimited
 from .service import FaceService, ImageInput, ServiceError
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-SESSION_COOKIE = "fm_session"
-_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
 def get_service(request: Request) -> FaceService:
@@ -75,27 +65,17 @@ def authenticate(
         token = authorization[7:].strip()
     ip = client_ip(request)
 
-    cookie = request.cookies.get(SESSION_COOKIE)
-
     if not state.keys.auth_enabled():
         principal = OPEN_ACCESS
     else:
         principal = state.keys.authenticate(token) if token else None
-        if principal is None and not token and cookie:
-            principal = state.keys.authenticate_session(cookie)
-            # Cookies are sent automatically by browsers, so changes need proof the request came
-            # from our own page: the per-session CSRF token in a header (synchroniser pattern).
-            if principal is not None and request.method in _UNSAFE_METHODS:
-                sent = request.headers.get("x-csrf-token", "")
-                if not hmac.compare_digest(sent.encode(), (principal.csrf or "").encode()):
-                    raise ServiceError(403, "csrf_failed", "Missing or invalid X-CSRF-Token header.")
         if principal is None:
             try:
                 state.limiter.auth_failure(ip)
             except RateLimited as exc:
                 raise _rate_limited(request, exc) from None
             raise ServiceError(401, "unauthorized", "Missing or invalid API key (X-API-Key header).")
-    bucket = ip if principal is OPEN_ACCESS else (principal.key_id or principal.user_id or principal.name)
+    bucket = ip if principal is OPEN_ACCESS else (principal.key_id or principal.name)
     try:
         state.limiter.check(bucket)
     except RateLimited as exc:
@@ -436,118 +416,13 @@ def retry_webhook(delivery_id: int, request: Request, service: FaceService = Dep
     return Response(status_code=202)
 
 
-# ---- auth: browser sessions for the admin UI ----------------------------------------------
-
-
-def _whoami(principal: Principal, expires_at: Optional[float] = None) -> WhoAmI:
-    return WhoAmI(
-        kind=principal.kind,
-        name=principal.name,
-        role=principal.role,
-        scopes=sorted(principal.scopes),
-        csrf_token=principal.csrf,
-        expires_at=expires_at,
-    )
-
-
-@router.post("/auth/login", response_model=WhoAmI, tags=["auth"])
-def login(body: LoginRequest, request: Request, service: FaceService = Depends(get_service)):
-    """Sign in to the admin UI. Sets an HttpOnly session cookie and returns the CSRF token."""
-    state, settings = request.app.state, service.settings
-    username = body.username.strip()
-    user = service.db.find_user(username)
-    if not check_password_with_timing_guard(body.password, user):
-        audit(request, "auth.login_failed", "user", user["id"] if user else None, actor=f"user:{username}")
-        try:
-            state.limiter.auth_failure(client_ip(request))
-            state.limiter.auth_failure("user:" + username.lower())
-        except RateLimited as exc:
-            raise _rate_limited(request, exc) from None
-        raise ServiceError(401, "invalid_credentials", "Wrong username or password.")
-
-    ttl = settings.session_hours * 3600
-    token, csrf, expires_at = service.db.create_session(
-        user["id"], ttl, client_ip(request), request.headers.get("user-agent")
-    )
-    service.db.update_user(user["id"], last_login_at=service._iso(time.time()))
-    principal = Principal(
-        name=user["username"],
-        scopes=ROLES[user["role"]],
-        kind="user",
-        user_id=user["id"],
-        role=user["role"],
-        csrf=csrf,
-    )
-    request.state.principal = principal
-    audit(request, "auth.login", "user", user["id"])
-    secure = settings.session_cookie_secure == "true" or (
-        settings.session_cookie_secure == "auto" and request.url.scheme == "https"
-    )
-    response = JSONResponse(jsonable_encoder(_whoami(principal, expires_at)))
-    response.set_cookie(
-        SESSION_COOKIE, token, max_age=int(ttl), httponly=True, samesite="strict", secure=secure, path="/"
-    )
-    return response
-
-
-@router.post("/auth/logout", status_code=204, tags=["auth"])
-def logout(request: Request, service: FaceService = Depends(get_service)):
-    cookie = request.cookies.get(SESSION_COOKIE)
-    if cookie:
-        principal = request.app.state.keys.authenticate_session(cookie)
-        if principal:
-            request.state.principal = principal
-            audit(request, "auth.logout", "user", principal.user_id)
-        service.db.delete_session(cookie)
-    response = Response(status_code=204)
-    response.delete_cookie(SESSION_COOKIE, path="/")
-    return response
+# ---- identity ---------------------------------------------------------------------------------
 
 
 @router.get("/auth/me", response_model=WhoAmI, tags=["auth"])
 def whoami(principal: Principal = Depends(authenticate)):
-    """Who the current key or session belongs to, and what it may do."""
-    return _whoami(principal)
-
-
-# ---- admin: users ----------------------------------------------------------------------------
-
-
-def _user(row) -> User:
-    return User(**{k: row[k] for k in User.model_fields})
-
-
-@router.get("/users", response_model=List[User], tags=["admin"], dependencies=[require("admin")])
-def list_users(service: FaceService = Depends(get_service)):
-    return [_user(r) for r in service.db.list_users()]
-
-
-@router.post("/users", response_model=User, status_code=201, tags=["admin"], dependencies=[require("admin")])
-def create_user(body: UserCreate, request: Request, service: FaceService = Depends(get_service)):
-    row = service.create_user(body.username, body.password, body.role)
-    request.app.state.keys.invalidate()  # auth turns on once the first user exists
-    audit(request, "user.create", "user", row["id"], {"username": row["username"], "role": row["role"]})
-    return _user(row)
-
-
-@router.patch("/users/{user_id}", response_model=User, tags=["admin"], dependencies=[require("admin")])
-def update_user(
-    user_id: str, body: UserUpdate, request: Request, service: FaceService = Depends(get_service)
-):
-    """Change role, reset password, or disable/enable. Password resets and disabling sign the user out."""
-    row = service.update_user(user_id, role=body.role, password=body.password, disabled=body.disabled)
-    details = {"role": body.role, "disabled": body.disabled, "password_reset": body.password is not None}
-    audit(
-        request, "user.update", "user", user_id, {k: v for k, v in details.items() if v not in (None, False)}
-    )
-    return _user(row)
-
-
-@router.delete("/users/{user_id}", status_code=204, tags=["admin"], dependencies=[require("admin")])
-def delete_user(user_id: str, request: Request, service: FaceService = Depends(get_service)):
-    row = service.delete_user(user_id)
-    audit(request, "user.delete", "user", user_id, {"username": row["username"]})
-    return Response(status_code=204)
+    """Which key this is and what it may do (useful to check a kiosk or integration key)."""
+    return WhoAmI(kind=principal.kind, name=principal.name, scopes=sorted(principal.scopes))
 
 
 # ---- admin: audit log ------------------------------------------------------------------------
@@ -557,9 +432,9 @@ def delete_user(user_id: str, request: Request, service: FaceService = Depends(g
 def list_audit(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    action: Optional[str] = Query(None, description="Filter, e.g. person.* or auth.login_failed"),
-    actor: Optional[str] = Query(None, description="Exact actor, e.g. user:asha or key:gate-1#3f9c…"),
+    action: Optional[str] = Query(None, description="Filter, e.g. person.* or key.revoke"),
+    actor: Optional[str] = Query(None, description="Exact actor, e.g. admin_key or key:gate-1#3f9c…"),
     service: FaceService = Depends(get_service),
 ):
-    """Who changed what: enrollments, deletions, keys, users, logins. Newest first."""
+    """Who changed what: enrollments, photo changes, deletions, keys, webhook retries. Newest first."""
     return [AuditEntry(**row) for row in service.db.list_audit(limit, offset, action, actor)]

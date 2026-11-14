@@ -1,6 +1,7 @@
 # API reference
 
-The service publishes interactive OpenAPI docs at `/docs` and the raw schema at `/openapi.json`.
+FaceMatch is API-only. The OpenAPI 3 specification is always at `/openapi.json` (generate clients from it).
+Interactive documentation pages (`/docs`, `/redoc`) are off by default; enable them with `API_DOCS=true`.
 
 - All endpoints except `/health` and `/metrics` are under `/api/v1`. See [Authentication](#authentication).
 - Images are sent as `multipart/form-data` (JPEG, PNG, WebP or BMP, up to `MAX_UPLOAD_MB`). EXIF rotation is applied.
@@ -32,10 +33,7 @@ curl localhost:8000/api/v1/keys -H "X-API-Key: $API_KEY"                    # li
 curl -X DELETE localhost:8000/api/v1/keys/3f9c… -H "X-API-Key: $API_KEY"    # revoke immediately
 ```
 
-**Browser sessions (admin UI):** `POST /api/v1/auth/login` with `{"username", "password"}` sets an HttpOnly session
-cookie and returns a `csrf_token`. Send it as `X-CSRF-Token` on every `POST`/`PUT`/`PATCH`/`DELETE` made with the cookie.
-`GET /api/v1/auth/me` shows who you are and your scopes; `POST /api/v1/auth/logout` ends the session. User roles map to
-scopes: `admin` → admin, `operator` → attendance, enroll, read, recognize; `viewer` → read.
+`GET /api/v1/auth/me` returns the name and scopes of the key you call it with.
 
 You can also manage keys from the server's shell: `face-match keys create --name gate-1 --scopes attendance`,
 `face-match keys list` and `face-match keys revoke <id>`.
@@ -64,10 +62,7 @@ header. Every response has an `X-Request-ID` header (pass your own to correlate 
 | `GET` | `/api/v1/webhooks?status=pending\|delivered\|failed` | Webhook delivery queue (admin) |
 | `POST` | `/api/v1/webhooks/{id}/retry` | Retry a failed delivery (admin) |
 | `GET` | `/metrics` | Prometheus metrics (`metrics` scope) |
-| `POST` | `/api/v1/auth/login` · `/auth/logout` | UI sign-in and sign-out (session cookie + CSRF token) |
-| `GET` | `/api/v1/auth/me` | Current identity, role and scopes |
-| `GET` / `POST` | `/api/v1/users` | List or create users (admin) |
-| `PATCH` / `DELETE` | `/api/v1/users/{id}` | Change role, reset password, disable or delete (admin). The last admin is protected |
+| `GET` | `/api/v1/auth/me` | Which key this is and its scopes |
 | `GET` | `/api/v1/audit?action=&actor=&limit=&offset=` | Audit log, newest first (admin) |
 
 ## Recognize
@@ -169,10 +164,10 @@ Every error has the same shape and a stable `code`:
 |---|---|
 | 400 | `invalid_image` |
 | 401 | `unauthorized` |
-| 403 | `forbidden` (the key or role lacks the scope), `csrf_failed` (session request without a valid `X-CSRF-Token`) |
+| 403 | `forbidden` (the key lacks the scope) |
 | 429 | `rate_limited` (see `Retry-After`) |
 | 503 | `busy` (see `Retry-After`) |
 | 404 | `person_not_found` |
-| 409 | `already_enrolled`, `external_id_exists`, `user_exists`, `last_admin` |
+| 409 | `already_enrolled`, `external_id_exists` |
 | 413 | `image_too_large` |
 | 422 | `validation_error`, `no_usable_face` (details list each rejected photo), `invalid_name`, `no_images`, `too_many_images` |

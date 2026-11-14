@@ -13,13 +13,12 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
-from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import __version__
 from .api import require, router
-from .config import STATIC_DIR, Settings
-from .engine import OpenCVFaceEngine
+from .config import Settings
+from .engine import FaceEngine, LivenessEngine, OpenCVFaceEngine
 from .liveness import load_liveness
 from .maintenance import MaintenanceWorker, Periodic
 from .model_store import ensure_models
@@ -39,15 +38,21 @@ def _error(status: int, code: str, message: str, details=None, headers=None) -> 
     return JSONResponse(status_code=status, content=jsonable_encoder(body), headers=headers)
 
 
-def create_app(settings: Optional[Settings] = None) -> FastAPI:
+def create_app(
+    settings: Optional[Settings] = None,
+    engine: Optional[FaceEngine] = None,
+    liveness: Optional[LivenessEngine] = None,
+) -> FastAPI:
+    """Build the API. `engine`/`liveness` can be injected (tests use model-free fakes)."""
     settings = settings or Settings.from_env()
     configure_logging(settings.log_level, settings.log_format)
 
-    models = ensure_models(settings.models_dir, download=settings.auto_download_models)
-    engine = OpenCVFaceEngine(
-        models["detector"], models["recognizer"], score_threshold=settings.detection_threshold
-    )
-    liveness = load_liveness(settings, models)
+    if engine is None:
+        models = ensure_models(settings.models_dir, download=settings.auto_download_models)
+        engine = OpenCVFaceEngine(
+            models["detector"], models["recognizer"], score_threshold=settings.detection_threshold
+        )
+        liveness = load_liveness(settings, models)
     db = open_database(settings)
     metrics = Metrics()
 
@@ -76,7 +81,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     stats = db.stats()
     log.info(
-        "FaceMatch %s ready: engine %s, liveness %s, %d people / %d embeddings, auth %s",
+        "FaceMatch %s API ready: engine %s, liveness %s, %d people / %d embeddings, auth %s",
         __version__,
         engine.name,
         liveness.name if liveness and settings.liveness == "on" else "off",
@@ -116,10 +121,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         title="FaceMatch",
         version=__version__,
         description=(
-            "Self-hosted face detection, face matching and attendance. Send images as multipart/form-data. "
+            "Self-hosted face detection, face matching and attendance API. "
+            "Send images as multipart/form-data. "
             "Authenticate with the `X-API-Key` header (or `Authorization: Bearer <key>`)."
         ),
         lifespan=lifespan,
+        # API only: the machine-readable spec is always at /openapi.json; the interactive
+        # documentation pages are off unless API_DOCS=true.
+        docs_url="/docs" if settings.api_docs else None,
+        redoc_url="/redoc" if settings.api_docs else None,
     )
     app.state.settings = settings
     app.state.service = service
@@ -198,7 +208,6 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             min_face_size=settings.min_face_size,
             liveness=bool(liveness and settings.liveness == "on"),
             auth_required=keys.auth_enabled(),
-            login=db.has_active_users(),
         )
 
     @app.get(
@@ -211,8 +220,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """Prometheus metrics. Needs a key with the `metrics` scope when auth is on."""
         return PlainTextResponse(metrics.render(), media_type="text/plain; version=0.0.4")
 
-    app.include_router(router)
+    @app.get("/", tags=["system"])
+    def root():
+        """Service identification for humans and load balancers."""
+        return {"service": "FaceMatch", "version": __version__, "api": "/api/v1", "openapi": "/openapi.json"}
 
-    # Demo web UI. Mounted last so it never shadows API routes.
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
+    app.include_router(router)
     return app

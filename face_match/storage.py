@@ -1,4 +1,4 @@
-"""Persistence for people, embeddings, attendance, keys, users, sessions, audit and webhooks.
+"""Persistence for people, embeddings, attendance, API keys, audit log and webhooks.
 
 Two backends share one implementation:
   * SQLite (default): a single file in DATA_DIR, ideal for one server.
@@ -85,29 +85,6 @@ CREATE TABLE IF NOT EXISTS webhook_outbox (
     delivered_at    {real}
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_due ON webhook_outbox(status, next_attempt_at);
-
--- Admin UI users. Passwords are stored as scrypt hashes.
-CREATE TABLE IF NOT EXISTS users (
-    id            TEXT PRIMARY KEY,
-    username      TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    role          TEXT NOT NULL,
-    created_at    TEXT NOT NULL,
-    last_login_at TEXT,
-    disabled_at   TEXT
-);
-
--- Login sessions. The id is a SHA-256 hash of the cookie value.
-CREATE TABLE IF NOT EXISTS sessions (
-    id         TEXT PRIMARY KEY,
-    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    csrf       TEXT NOT NULL,
-    created_at {real} NOT NULL,
-    expires_at {real} NOT NULL,
-    ip         TEXT,
-    user_agent TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
 
 -- Who changed what, and when.
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -459,88 +436,6 @@ class Database:
 
     def has_active_api_keys(self) -> bool:
         return self._one("SELECT 1 AS x FROM api_keys WHERE revoked_at IS NULL LIMIT 1") is not None
-
-    # ---- users & sessions ----------------------------------------------------------
-
-    def create_user(self, username: str, password_hash: str, role: str, created_at: str) -> Row:
-        user_id = uuid.uuid4().hex[:12]
-        with self._tx():
-            self._execute(
-                "INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)",
-                (user_id, username, password_hash, role, created_at),
-            )
-        return self.get_user(user_id)  # type: ignore[return-value]
-
-    def get_user(self, user_id: str) -> Optional[Row]:
-        return self._one("SELECT * FROM users WHERE id = ?", (user_id,))
-
-    def find_user(self, username: str) -> Optional[Row]:
-        return self._one("SELECT * FROM users WHERE lower(username) = lower(?)", (username,))
-
-    def list_users(self) -> List[Row]:
-        return self._all("SELECT * FROM users ORDER BY lower(username)")
-
-    def update_user(self, user_id: str, **fields: Any) -> bool:
-        allowed = {"password_hash", "role", "disabled_at", "last_login_at"}
-        changes = {k: v for k, v in fields.items() if k in allowed}
-        if not changes:
-            return False
-        assignments = ", ".join(f"{column} = ?" for column in changes)
-        with self._tx():
-            return (
-                self._execute(
-                    f"UPDATE users SET {assignments} WHERE id = ?", (*changes.values(), user_id)
-                ).rowcount
-                > 0
-            )
-
-    def delete_user(self, user_id: str) -> bool:
-        with self._tx():
-            self._execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
-            return self._execute("DELETE FROM users WHERE id = ?", (user_id,)).rowcount > 0
-
-    def count_admins(self) -> int:
-        return int(
-            self._value("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND disabled_at IS NULL") or 0
-        )
-
-    def has_active_users(self) -> bool:
-        return self._one("SELECT 1 AS x FROM users WHERE disabled_at IS NULL LIMIT 1") is not None
-
-    def create_session(
-        self, user_id: str, ttl_seconds: float, ip: Optional[str], user_agent: Optional[str]
-    ) -> Tuple[str, str, float]:
-        """Returns (cookie token, csrf token, expiry). Only a hash of the token is stored."""
-        token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
-        now = time.time()
-        with self._tx():
-            self._execute(
-                """INSERT INTO sessions (id, user_id, csrf, created_at, expires_at, ip, user_agent)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (self.hash_token(token), user_id, csrf, now, now + ttl_seconds, ip, (user_agent or "")[:300]),
-            )
-        return token, csrf, now + ttl_seconds
-
-    def get_session(self, token: str, now: float) -> Optional[Row]:
-        """Active session joined with its (enabled) user."""
-        return self._one(
-            """SELECT s.id AS session_id, s.csrf, s.expires_at, u.id AS user_id, u.username, u.role
-               FROM sessions s JOIN users u ON u.id = s.user_id
-               WHERE s.id = ? AND s.expires_at > ? AND u.disabled_at IS NULL""",
-            (self.hash_token(token), now),
-        )
-
-    def delete_session(self, token: str) -> None:
-        with self._tx():
-            self._execute("DELETE FROM sessions WHERE id = ?", (self.hash_token(token),))
-
-    def delete_sessions_for_user(self, user_id: str) -> None:
-        with self._tx():
-            self._execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
-
-    def purge_expired_sessions(self, now: float) -> int:
-        with self._tx():
-            return self._execute("DELETE FROM sessions WHERE expires_at <= ?", (now,)).rowcount
 
     # ---- audit log -------------------------------------------------------------------
 
