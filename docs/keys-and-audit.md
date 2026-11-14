@@ -1,40 +1,16 @@
-# Keys, kiosks and the audit log
+# Kiosks and the audit log
 
 FaceMatch is an API-only service. Every caller (your portal backend, each kiosk, monitoring) authenticates
 with an API key.
 
 ## API keys
 
-| Key | What it is |
-|---|---|
-| **Admin key** | The `API_KEY` setting. Can do everything, including creating and revoking other keys. Keep it on the server side only |
-| **Device keys** | Keys you create per kiosk, integration or monitoring system, each limited to the permissions it needs. Only a SHA-256 hash is stored; the token is shown once |
-
-| Scope | Allows |
-|---|---|
-| `attendance` | `POST /api/v1/attendance`. Give kiosks **only** this |
-| `recognize` | `POST /api/v1/detect`, `POST /api/v1/recognize` |
-| `read` | List people, attendance and summaries |
-| `enroll` | Create, update and delete people and photos |
-| `metrics` | `GET /metrics` |
-| `admin` | Everything, including keys, webhook deliveries and the audit log |
+Creating keys, choosing permissions (scopes), using keys in curl or Postman, and rotating or revoking them are
+covered in **[api-keys.md](api-keys.md)**. In short, kiosks get a device key with only the `attendance` scope:
 
 ```bash
-# with the API
-curl -X POST localhost:8000/api/v1/keys -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"name": "gate-1 kiosk", "scopes": ["attendance"]}'
-curl localhost:8000/api/v1/keys -H "X-API-Key: $API_KEY"
-curl -X DELETE localhost:8000/api/v1/keys/<id> -H "X-API-Key: $API_KEY"
-
-# or on the server
-face-match keys create --name "gate-1 kiosk" --scopes attendance
-face-match keys create --name "portal sync" --scopes read,enroll
-face-match keys list
-face-match keys revoke <id>
+face-match keys create --name "gate-1-kiosk" --scopes attendance
 ```
-
-`GET /api/v1/auth/me` returns the name and scopes of the key you call it with, which is handy for checking a
-device's setup. Revoked keys stop working within 30 seconds on every server.
 
 ## Building a kiosk
 

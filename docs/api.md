@@ -9,6 +9,8 @@ Interactive documentation pages (`/docs`, `/redoc`) are off by default; enable t
 
 ## Authentication
 
+Full guide: [api-keys.md](api-keys.md) (creating keys, choosing scopes, Postman, rotation).
+
 Send a key as `X-API-Key: <key>` or `Authorization: Bearer <key>`.
 
 - **Admin key:** the `API_KEY` setting. It can do everything, including creating other keys.

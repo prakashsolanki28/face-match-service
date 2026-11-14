@@ -16,6 +16,10 @@ FaceMatch is now an API-only service.
 - The `login` field from `/health`.
 - Datasets, sample photos and dummy data from the project and its tests.
 
+### Added
+- docs/api-keys.md: creating keys, scopes, recommended keys per client, Postman, rotation and revocation.
+- Keys created or revoked with the `face-match keys` command are now recorded in the audit log (actor `cli`).
+
 ### Changed
 - Interactive API docs (`/docs`, `/redoc`) are off by default; enable them with `API_DOCS=true`. The OpenAPI spec
   is always at `/openapi.json`, and `GET /` returns a small service description.

@@ -170,6 +170,7 @@ def _keys_command(args: argparse.Namespace, settings: Settings) -> None:
             if not scopes or unknown:
                 raise SystemExit(f"Unknown or missing scopes {unknown}. Choose from: {', '.join(SCOPES)}")
             row, token = db.create_api_key(args.name, scopes, now)
+            db.add_audit("cli", "key.create", "key", row["id"], {"name": row["name"], "scopes": scopes})
             print(f"Created key {row['id']} ({row['name']}) with scopes: {row['scopes']}")
             print(f"Token (shown once, store it securely): {token}")
         elif args.keys_command == "list":
@@ -182,6 +183,7 @@ def _keys_command(args: argparse.Namespace, settings: Settings) -> None:
         elif args.keys_command == "revoke":
             if not db.revoke_api_key(args.key_id, now):
                 raise SystemExit(f"No active key with id {args.key_id}")
+            db.add_audit("cli", "key.revoke", "key", args.key_id)
             print(f"Revoked {args.key_id} (running servers stop accepting it within 30 s)")
     finally:
         db.close()

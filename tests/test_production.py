@@ -306,6 +306,12 @@ def test_cli_keys_and_backup(tmp_path, monkeypatch, capsys):
         main(["keys", "create", "--name", "x", "--scopes", "superuser"])
     main(["backup"])
     assert "Backup written" in capsys.readouterr().out
+    db = Database(tmp_path / "data" / "facematch.db")
+    assert [(e["actor"], e["action"]) for e in reversed(db.list_audit(10))] == [
+        ("cli", "key.create"),
+        ("cli", "key.revoke"),
+    ]
+    db.close()
 
 
 def test_pilot_report_compare_flags_false_presents():

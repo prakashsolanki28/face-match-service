@@ -16,7 +16,7 @@ FaceMatch stores biometric data (face embeddings). Treat a deployment like any s
 
 - **Always set `API_KEY`** (the admin key). The service refuses to listen on a network interface without
   authentication, unless you set `ALLOW_NO_AUTH=true` on purpose.
-- **Give every kiosk and integration its own scoped key** (`face-match keys create --scopes attendance`) and
+- **Give every kiosk and integration its own scoped key** (see [docs/api-keys.md](docs/api-keys.md)) (`face-match keys create --scopes attendance`) and
   revoke lost devices. Never put the admin key on a kiosk.
 - Rate limiting (`RATE_LIMIT_PER_MINUTE`), bad-key throttling and an overload gate are on by default. Behind a
   reverse proxy, set `FORWARDED_ALLOW_IPS` so limits apply per real client.

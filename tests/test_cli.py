@@ -10,18 +10,29 @@ from face_match.config import Settings
 
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1"])
-def test_open_api_is_allowed_on_loopback(host):
-    check_auth(Settings(), host)
+def test_open_api_is_allowed_on_loopback(host, tmp_path):
+    check_auth(Settings(data_dir=tmp_path), host)
 
 
-def test_open_api_on_a_network_interface_is_refused():
+def test_open_api_on_a_network_interface_is_refused(tmp_path):
+    # An empty data dir: tests must never read the real ./data (it may hold real keys).
     with pytest.raises(SystemExit, match="API_KEY"):
-        check_auth(Settings(), "0.0.0.0")
+        check_auth(Settings(data_dir=tmp_path), "0.0.0.0")
 
 
-def test_network_interface_is_fine_with_a_key_or_explicit_opt_out():
-    check_auth(dataclasses.replace(Settings(), api_key="secret"), "0.0.0.0")
-    check_auth(dataclasses.replace(Settings(), allow_no_auth=True), "0.0.0.0")
+def test_network_interface_is_fine_with_a_key_or_explicit_opt_out(tmp_path):
+    check_auth(dataclasses.replace(Settings(data_dir=tmp_path), api_key="secret"), "0.0.0.0")
+    check_auth(dataclasses.replace(Settings(data_dir=tmp_path), allow_no_auth=True), "0.0.0.0")
+
+
+def test_network_interface_is_fine_once_a_device_key_exists(tmp_path):
+    from face_match.storage import Database
+
+    settings = Settings(data_dir=tmp_path)
+    db = Database(settings.db_path)
+    db.create_api_key("kiosk", ["attendance"], "2026-01-01T00:00:00")
+    db.close()
+    check_auth(settings, "0.0.0.0")
 
 
 def test_allow_no_auth_is_read_from_the_environment(monkeypatch):

@@ -94,7 +94,8 @@ back to your records.
 - [Integrating with a portal](docs/integration.md): IDs, webhooks, bulk import, keeping photos up to date
 - [Attendance guide](docs/attendance.md): schools and offices with hundreds of people
 - [Pilot guide](docs/pilot.md): validate on your own people before go-live
-- [Keys, kiosks and audit log](docs/keys-and-audit.md): device keys, building a kiosk client, audit log
+- [API keys and permissions](docs/api-keys.md): create keys, scopes, Postman, rotate and revoke
+- [Kiosks and audit log](docs/keys-and-audit.md): building a kiosk client, audit log
 - [Accuracy](docs/accuracy.md): how it's measured, results, tuning
 - [Privacy & security](docs/privacy.md): biometric data, consent, liveness
 
