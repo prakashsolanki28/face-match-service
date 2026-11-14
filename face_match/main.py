@@ -182,6 +182,7 @@ def create_app(
             status="ok",
             version=__version__,
             engine=engine.name,
+            embedding_model=service.embedding_model,
             persons=current["persons"],
             embeddings=current["embeddings"],
             match_threshold=settings.match_threshold,

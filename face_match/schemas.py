@@ -165,6 +165,7 @@ class Health(BaseModel):
     status: Literal["ok"]
     version: str
     engine: str
+    embedding_model: str
     persons: int
     embeddings: int
     match_threshold: float

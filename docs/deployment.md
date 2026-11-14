@@ -171,4 +171,8 @@ volumes: { pgdata: {} }
 - **Restore:** stop the service, replace `DATA_DIR/facematch.db` with a backup file (remove any `facematch.db-wal`
   and `-shm` next to it), and start it again.
 - Upgrades keep the same database. Databases from before v1.0 (`attendance.db`) are picked up automatically.
+- The database remembers which recognition model made its face embeddings (shown as `embedding_model` in
+  `/health`). If an upgrade changes the model, the server refuses to start rather than return wrong matches.
+  Photos are never stored, so embeddings can't be converted: stay on the previous version, or enroll everyone
+  again into a new, empty database (a new `DATA_DIR` or `DATABASE_URL`), for example with `face-match import`.
 - Pin an image tag (e.g. `:1.0`) in production. `:latest` follows the newest release.

@@ -25,6 +25,10 @@ portal (release as 3.0.0).
   enrolling hundreds of people and marking attendance in your portal).
 
 ### Added
+- The database records which recognition model made its face embeddings (schema 6). A server running a
+  different model refuses to start instead of silently returning wrong matches, since embeddings from different
+  models can't be compared. Existing databases are claimed by the current model on upgrade; an empty database
+  can switch models. `/health` reports it as `embedding_model`.
 - Enroll with photos only: `name` is optional on `POST /api/v1/persons`. Store the returned `person.id` in your
   system; every match carries it as `person_id`.
 - `metadata`: your own fields on a person (for example class, section and roll number), sent as a JSON form field

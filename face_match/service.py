@@ -46,6 +46,46 @@ METADATA_MAX_KEY_LENGTH = 64
 METADATA_MAX_TEXT_LENGTH = 1000
 
 
+EMBEDDING_MODEL_KEY = "embedding_model"
+
+
+def embedding_model_id(engine: FaceEngine) -> str:
+    return getattr(engine, "model_id", None) or engine.name
+
+
+class EmbeddingModelMismatch(RuntimeError):
+    """The database holds embeddings from a different recognition model than the one loaded."""
+
+    def __init__(self, stored: str, loaded: str, embeddings: int) -> None:
+        super().__init__(
+            f"The database holds {embeddings} face embeddings made by the model '{stored}', but this "
+            f"server runs '{loaded}'. Embeddings from different models can't be compared: matching "
+            "would give wrong results, so FaceMatch won't start. Either run the version of FaceMatch "
+            "(and model) that made them, or enroll everyone again into a new, empty database (a new "
+            "DATA_DIR or DATABASE_URL), for example with `face-match import`. Photos are never stored, "
+            "so existing embeddings can't be converted."
+        )
+        self.stored, self.loaded = stored, loaded
+
+
+def check_embedding_model(db: Database, engine: FaceEngine) -> str:
+    """Record which model makes this database's embeddings, and refuse a different one.
+
+    The first server to start claims the database for its model. Databases from before schema 6
+    have no record; their embeddings were made by the only model those versions shipped, so they
+    are claimed by the current one. An empty database can switch models freely.
+    """
+    loaded = embedding_model_id(engine)
+    db.set_info(EMBEDDING_MODEL_KEY, loaded, overwrite=False)
+    stored = db.get_info(EMBEDDING_MODEL_KEY)
+    if stored != loaded:
+        embeddings = db.stats()["embeddings"]
+        if embeddings:
+            raise EmbeddingModelMismatch(stored or "unknown", loaded, embeddings)
+        db.set_info(EMBEDDING_MODEL_KEY, loaded)
+    return loaded
+
+
 class ServiceError(Exception):
     def __init__(
         self,
@@ -155,6 +195,7 @@ class FaceService:
         self.db = db
         self.metrics = metrics or Metrics()
         self.liveness = liveness
+        self.embedding_model = check_embedding_model(db, engine)
         self.gallery = FaceGallery(engine.embedding_size)
         # Read the change-feed position first, so nothing written during the load is missed.
         self._gallery_revision = db.gallery_revision()

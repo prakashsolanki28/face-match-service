@@ -35,6 +35,9 @@ class Face:
 class FaceEngine(Protocol):
     name: str
     embedding_size: int
+    # Identifies the recognition model. Embeddings from different models can't be compared, so the
+    # database remembers which model made its embeddings. Engines without it use `name`.
+    model_id: str
 
     def detect(self, image: np.ndarray) -> List[Face]: ...
 
@@ -68,6 +71,8 @@ class OpenCVFaceEngine:
             str(detector_path), "", (320, 320), score_threshold, nms_threshold, 5000
         )
         self._recognizer = cv2.FaceRecognizerSF.create(str(recognizer_path), "")
+        # The weights file name carries the model version (e.g. face_recognition_sface_2021dec).
+        self.model_id = f"{self.name}/{Path(recognizer_path).stem}"
         # OpenCV DNN objects are stateful (input size, buffers), so serialise access.
         self._detect_lock = threading.Lock()
         self._embed_lock = threading.Lock()

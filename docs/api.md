@@ -34,7 +34,7 @@ header. Every response has an `X-Request-ID` header (pass your own to correlate 
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/health` | Status, version, engine, number of people and embeddings, thresholds, whether auth is required |
+| `GET` | `/health` | Status, version, engine, embedding model, number of people and embeddings, thresholds, whether auth is required |
 | `POST` | `/api/v1/detect` | Faces, boxes and 5 landmarks. No identity lookup |
 | `POST` | `/api/v1/recognize?liveness=&closest=` | Identify every face and return who they are. Records nothing |
 | `POST` | `/api/v1/persons` | Enroll: 1–10 `images`, plus optional `name`, `external_id`, `metadata` and `allow_duplicate` |

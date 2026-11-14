@@ -22,7 +22,7 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tupl
 
 import numpy as np
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 _TABLES = """
 -- name is '' when none was given (the API returns null). metadata is a JSON object of the
@@ -67,6 +67,12 @@ CREATE TABLE IF NOT EXISTS gallery_changes (
     person_id TEXT NOT NULL,
     op        TEXT NOT NULL,
     ts        {real} NOT NULL
+);
+
+-- Facts about the stored data, e.g. which recognition model produced the embeddings (schema 6).
+CREATE TABLE IF NOT EXISTS service_info (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
 );
 
 -- Scoped device keys were removed in 2.0: the single API_KEY setting gives full access.
@@ -312,6 +318,20 @@ class Database:
             "persons": int(self._value("SELECT COUNT(*) AS n FROM persons") or 0),
             "embeddings": int(self._value("SELECT COUNT(*) AS n FROM face_embeddings") or 0),
         }
+
+    # ---- service info ----------------------------------------------------------------
+
+    def get_info(self, key: str) -> Optional[str]:
+        return self._value("SELECT value FROM service_info WHERE key = ?", (key,))
+
+    def set_info(self, key: str, value: str, overwrite: bool = True) -> None:
+        """Store a value. With overwrite=False an existing value is kept (first writer wins)."""
+        action = "UPDATE SET value = excluded.value" if overwrite else "NOTHING"
+        with self._tx():
+            self._execute(
+                f"INSERT INTO service_info (key, value) VALUES (?, ?) ON CONFLICT (key) DO {action}",
+                (key, value),
+            )
 
     # ---- audit log -------------------------------------------------------------------
 

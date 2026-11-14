@@ -9,13 +9,17 @@ import sqlite3
 import stat
 import time
 
+import numpy as np
 import pytest
-from conftest import sqlite_only
-from fakes import Spec, face_png
+from conftest import make_test_settings, reset_test_database, sqlite_only
+from fakes import FakeEngine, FakeLiveness, Spec, face_png
+from fastapi.testclient import TestClient
 
+from face_match.main import create_app
 from face_match.maintenance import MaintenanceWorker, apply_retention, list_backups, make_backup
 from face_match.observability import JsonFormatter
 from face_match.security import Busy, ImageGate
+from face_match.service import EmbeddingModelMismatch, check_embedding_model
 from face_match.storage import Database
 
 KEY = {"X-API-Key": "the-api-key"}
@@ -257,3 +261,45 @@ def test_cli_backup_and_no_keys_command(tmp_path, monkeypatch, capsys):
     with pytest.raises(SystemExit) as exit_info:
         main(["keys", "list"])
     assert exit_info.value.code == 2  # unknown command
+
+
+# ---- embedding model ----------------------------------------------------------
+
+
+class _OtherModel(FakeEngine):
+    model_id = "fake/other-model"
+
+
+def test_health_reports_the_embedding_model(client):
+    assert client.get("/health").json()["embedding_model"] == "fake"
+
+
+def test_server_refuses_embeddings_from_another_model(tmp_path):
+    settings = make_test_settings(tmp_path)
+    reset_test_database()
+    with TestClient(create_app(settings, engine=FakeEngine(), liveness=FakeLiveness())) as client:
+        res = client.post("/api/v1/persons", files=[("images", ("f.png", face_png(Spec(1)), "image/png"))])
+        assert res.status_code == 201
+    with pytest.raises(EmbeddingModelMismatch, match="won't start"):
+        create_app(settings, engine=_OtherModel(), liveness=FakeLiveness())
+
+
+def test_an_empty_database_switches_model(tmp_path):
+    settings = make_test_settings(tmp_path)
+    reset_test_database()
+    with TestClient(create_app(settings, engine=FakeEngine(), liveness=FakeLiveness())):
+        pass  # nobody enrolled
+    with TestClient(create_app(settings, engine=_OtherModel(), liveness=FakeLiveness())) as client:
+        assert client.get("/health").json()["embedding_model"] == "fake/other-model"
+
+
+@sqlite_only
+def test_databases_from_before_schema_6_are_claimed_by_the_current_model(tmp_path):
+    db = Database(tmp_path / "facematch.db")
+    db._conn.execute("DROP TABLE service_info")  # as created by an older version
+    db.create_person("Asha", None, [np.ones(128, np.float32)], "2026-01-01T00:00:00")
+    db.close()
+    db = Database(tmp_path / "facematch.db")
+    assert check_embedding_model(db, FakeEngine()) == "fake"
+    assert db.get_info("embedding_model") == "fake"
+    db.close()
