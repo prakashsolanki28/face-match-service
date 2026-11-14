@@ -60,6 +60,8 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
+// An unattended kiosk must survive reboots, so it stores its device key locally. That's why kiosk keys
+// should have only the "attendance" scope (and can be revoked from Admin → Device keys).
 const KEY_STORE = "faceMatch.kioskKey", DEVICE_STORE = "faceMatch.kioskDevice";
 const store = { get: (k) => { try { return localStorage.getItem(k) || ""; } catch { return ""; } },
                 set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },

@@ -338,9 +338,11 @@ const time = (iso) => iso ? new Date(iso).toLocaleTimeString([], {hour: "2-digit
 const localDate = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
 
 const state = { stream: null, scanning: false, inflight: false, timer: null, shots: [], seen: new Map() };
-const KEY_STORE = "faceMatch.apiKey";
+// API keys are kept in memory only (never written to browser storage): sign in with an account for
+// a persistent session. Remove any key saved by older versions.
+const LEGACY_KEY_STORE = "faceMatch.apiKey";
 const RECORD_STORE = "faceMatch.recordAttendance";
-try { $("apiKey").value = localStorage.getItem(KEY_STORE) || ""; } catch {}
+try { localStorage.removeItem(LEGACY_KEY_STORE); } catch {}
 try { $("recordAttendance").checked = localStorage.getItem(RECORD_STORE) === "1"; } catch {}
 $("recordAttendance").addEventListener("change", (e) => { try { localStorage.setItem(RECORD_STORE, e.target.checked ? "1" : "0"); } catch {} });
 
@@ -430,13 +432,12 @@ $("loginForm").addEventListener("submit", async (e) => {
 });
 $("useKey").addEventListener("click", () => { $("keyBox").hidden = !$("keyBox").hidden; });
 $("saveKey").addEventListener("click", async () => {
-  try { localStorage.setItem(KEY_STORE, $("apiKey").value.trim()); } catch {}
   if (await ensureSession()) loadHealth();
   else $("loginError").innerHTML = `<div class="notice bad">That API key wasn't accepted.</div>`;
 });
 $("signOut").addEventListener("click", async () => {
   if (state.me?.kind === "user") { try { await api("/api/v1/auth/logout", { method: "POST" }); } catch {} }
-  $("apiKey").value = ""; try { localStorage.removeItem(KEY_STORE); } catch {}
+  $("apiKey").value = "";
   state.me = null; state.csrf = null;
   showLogin();
 });
