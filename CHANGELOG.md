@@ -5,8 +5,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-14
+
 Breaking release: FaceMatch is now a face detection and matching service only; attendance is built in your own
-portal (release as 3.0.0).
+portal.
 
 ### Removed (breaking)
 - Built-in attendance: `POST /api/v1/attendance`, `GET /api/v1/attendance` and `GET /api/v1/attendance/summary`.

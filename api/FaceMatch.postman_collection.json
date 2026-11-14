@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "cd23b2df-6151-5bdf-b03c-9e063dcf9798",
     "name": "FaceMatch API",
-    "description": "Every FaceMatch 2.0.0 endpoint, ready to send.\n\n1. Import `FaceMatch.postman_environment.json` too and select the **FaceMatch** environment. Set `baseUrl` to your server and `apiKey` to your API key (the `API_KEY` setting).\n2. Send **System → Health check**, then **Auth → Check API key**.\n3. For photos, open **Body → form-data** and choose a file in each `image` / `images` row.\n\nEnrolling a person saves the new id in `personId` for the requests that need it.\n\nThe API key: https://github.com/prakashsolanki28/face-match-service/blob/main/docs/api-keys.md\n\nGenerated from the OpenAPI spec by `face-match export-api`.",
+    "description": "Every FaceMatch 3.0.0 endpoint, ready to send.\n\n1. Import `FaceMatch.postman_environment.json` too and select the **FaceMatch** environment. Set `baseUrl` to your server and `apiKey` to your API key (the `API_KEY` setting).\n2. Send **System → Health check**, then **Auth → Check API key**.\n3. For photos, open **Body → form-data** and choose a file in each `image` / `images` row.\n\nEnrolling a person saves the new id in `personId` for the requests that need it.\n\nThe API key: https://github.com/prakashsolanki28/face-match-service/blob/main/docs/api-keys.md\n\nGenerated from the OpenAPI spec by `face-match export-api`.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
